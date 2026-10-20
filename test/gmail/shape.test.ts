@@ -135,3 +135,10 @@ describe('shapeMessage', () => {
     expect(shapeMessage(m, 'e@example.com', 'PLAIN_TEXT').plaintextBody).toBe('café');
   });
 });
+
+describe('htmlToText with case-changing characters', () => {
+  it('keeps tag indices aligned when lowercasing changes length', () => {
+    const t = htmlToText('İSTANBUL <script>x</script> İzmir');
+    expect(t.replace(/\s+/g, ' ')).toBe('İSTANBUL İzmir');
+  });
+});

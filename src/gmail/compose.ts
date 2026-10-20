@@ -43,9 +43,11 @@ export type ReplyHeaders = {
   replyTo: string;
   to: string[];
   cc: string[];
+  // The original message's To list, for reply-all.
+  originalTo: string[];
 };
 
-function addrOf(entry: string): string {
+export function addrOf(entry: string): string {
   const m = /<([^>]+)>/.exec(entry);
   return (m ? m[1] : entry).trim().toLowerCase();
 }
@@ -69,8 +71,8 @@ export async function replyHeaders(api: GmailApi, messageId: string, selfEmail?:
   const from = h('From');
   const replyTo = h('Reply-To') || from;
   let to = parseAddressList(replyTo);
+  const orig = parseAddressList(h('To'));
   if (selfEmail && to.length && to.every((x) => addrOf(x) === selfEmail.trim().toLowerCase())) {
-    const orig = parseAddressList(h('To'));
     if (orig.length) to = orig;
   }
   return {
@@ -82,5 +84,6 @@ export async function replyHeaders(api: GmailApi, messageId: string, selfEmail?:
     replyTo,
     to,
     cc: parseAddressList(h('Cc')),
+    originalTo: orig,
   };
 }

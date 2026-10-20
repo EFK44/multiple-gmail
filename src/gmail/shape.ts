@@ -99,7 +99,8 @@ const BLOCK_OPEN = new Set(['p', 'div', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'
 // An unclosed comment, script/style/head block or tag drops the rest of the input. Output is plain text.
 export function htmlToText(input: string): string {
   const html = input.length > 5 * BODY_CAP ? input.slice(0, 5 * BODY_CAP) : input;
-  const lower = html.toLowerCase();
+  // ASCII-only lowercasing keeps every index aligned with `html` (full Unicode lowercasing can change length, e.g. 'İ').
+  const lower = html.replace(/[A-Z]+/g, (s) => s.toLowerCase());
   let out = '';
   let pos = 0;
   for (;;) {
