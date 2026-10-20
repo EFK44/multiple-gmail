@@ -128,6 +128,7 @@
     "ok": "Anahtar dosyası kaydedildi. multiple-gmail onu bu bilgisayarda şifreli olarak saklıyor.",
     "already": "Kayıtlı bir anahtar dosyası zaten var. Yeni bir dosya yüklersen eskisinin yerine geçer.",
     "webWarning": "Bu dosya \"Web application\" türünde bir istemciye ait. multiple-gmail'in \"Desktop app\" türünde bir istemciye ihtiyacı var. Google Cloud rehberinin 5. adımına dön ve \"Desktop app\" istemcisi oluştur.",
+    "clientChanged": "Bu anahtar dosyası, hesaplarının bağlandığı istemciden farklı bir Google istemcisine ait. Her hesapta Yeniden bağlan düğmesine tıklayıp tekrar oturum aç.",
     "secret": "Bu dosyada gizli bir bilgi var. Kimseyle paylaşma, kimseye gönderme.",
     "next": "Sıradaki: bir Gmail hesabı bağla",
     "err": {

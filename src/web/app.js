@@ -604,10 +604,10 @@ async function uploadFile(file) {
     const r = await api('POST', '/client', text, true);
     if (r.ok) {
       await refreshState();
-      S.upload = { kind: r.json.kind === 'web' ? 'warn' : 'ok', key: r.json.kind === 'web' ? 'upload.webWarning' : 'upload.ok' };
+      S.upload = r.json.clientChanged ? { kind: 'warn', key: 'upload.clientChanged' } : { kind: 'ok', key: 'upload.ok' };
     } else {
       const m = String(r.json.error ?? '');
-      const key = UPLOAD_ERRORS.find(([re]) => re.test(m))?.[1];
+      const key = r.json.code === 'web_client' ? 'upload.webWarning' : UPLOAD_ERRORS.find(([re]) => re.test(m))?.[1];
       S.upload = key ? { kind: 'error', key } : { kind: 'error', raw: serverError(r) };
     }
   } catch (e) {

@@ -128,6 +128,7 @@
     "ok": "Key file saved. multiple-gmail keeps it encrypted on this computer.",
     "already": "A key file is already saved. Uploading a new one replaces it.",
     "webWarning": "This file belongs to a Web application client. multiple-gmail needs a Desktop app client. Go back to the Google Cloud guide, step 5, and create a Desktop app client.",
+    "clientChanged": "This key file belongs to a different Google client than the one your accounts were connected with. Click Reconnect on every account to sign in again.",
     "secret": "This file contains a secret. Do not share it or send it to anyone.",
     "next": "Next: connect a Gmail account",
     "err": {

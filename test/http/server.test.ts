@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { saveConfig } from '../../src/core/config.js';
@@ -241,6 +242,44 @@ describe('local http server', () => {
     expect(ok.status).toBe(200);
     expect(ok.body).not.toContain('sec-1');
     expect((await loadClient())?.clientId).toBe('id-1');
+  });
+
+  it('POST /api/client rejects a Web application client in local mode before saving (en and tr)', async () => {
+    const en = JSON.parse(await readFile(new URL('../../src/web/i18n/en.json', import.meta.url), 'utf8'));
+    const tr = JSON.parse(await readFile(new URL('../../src/web/i18n/tr.json', import.meta.url), 'utf8'));
+    const s = await start();
+    const cookie = await session(s);
+    const web = { web: { client_id: 'w-1', client_secret: 'sec-w', redirect_uris: ['http://localhost'] } };
+    const r = await api(s, cookie, 'POST', '/api/client', web);
+    expect(r.status).toBe(400);
+    expect(JSON.parse(r.body)).toMatchObject({ error: en.upload.webWarning, code: 'web_client' });
+    expect(await loadClient()).toBeNull();
+    await saveConfig({ port: 47110, language: 'tr', defaultAccount: null, accounts: {} });
+    const r2 = await api(s, cookie, 'POST', '/api/client', web);
+    expect(JSON.parse(r2.body).error).toBe(tr.upload.webWarning);
+    expect(await loadClient()).toBeNull();
+  });
+
+  it('POST /api/client warns that every account needs Reconnect when the client ID changes', async () => {
+    const en = JSON.parse(await readFile(new URL('../../src/web/i18n/en.json', import.meta.url), 'utf8'));
+    const s = await start();
+    const cookie = await session(s);
+    const client = (id: string) => ({ installed: { client_id: id, client_secret: 'sec', redirect_uris: ['http://localhost'] } });
+    // No accounts yet: no warning.
+    const first = JSON.parse((await api(s, cookie, 'POST', '/api/client', client('id-1'))).body);
+    expect(first).toEqual({ ok: true, kind: 'installed' });
+    await saveConfig({
+      port: 47110,
+      language: 'en',
+      defaultAccount: null,
+      accounts: { alpha: { email: 'you@example.com', addedAt: '2026-10-01T00:00:00.000Z' } },
+    });
+    // Same client again: no warning.
+    expect(JSON.parse((await api(s, cookie, 'POST', '/api/client', client('id-1'))).body).clientChanged).toBeUndefined();
+    const changed = await api(s, cookie, 'POST', '/api/client', client('id-2'));
+    expect(changed.status).toBe(200);
+    expect(JSON.parse(changed.body)).toEqual({ ok: true, kind: 'installed', clientChanged: true, warning: en.upload.clientChanged });
+    expect((await loadClient())?.clientId).toBe('id-2');
   });
 
   it('GET /api/state exposes the non-secret client ID, never the client secret', async () => {

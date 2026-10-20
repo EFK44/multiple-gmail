@@ -44,6 +44,18 @@ type FlowState = {
 };
 
 const ok = (json: unknown): ApiResponse => ({ status: 200, json });
+
+// Same text as upload.webWarning and upload.clientChanged in src/web/i18n (a test keeps them equal).
+const UPLOAD_TEXT = {
+  webWarning: {
+    en: "This file belongs to a Web application client. multiple-gmail needs a Desktop app client. Go back to the Google Cloud guide, step 5, and create a Desktop app client.",
+    tr: "Bu dosya \"Web application\" türünde bir istemciye ait. multiple-gmail'in \"Desktop app\" türünde bir istemciye ihtiyacı var. Google Cloud rehberinin 5. adımına dön ve \"Desktop app\" istemcisi oluştur.",
+  },
+  clientChanged: {
+    en: "This key file belongs to a different Google client than the one your accounts were connected with. Click Reconnect on every account to sign in again.",
+    tr: "Bu anahtar dosyası, hesaplarının bağlandığı istemciden farklı bir Google istemcisine ait. Her hesapta Yeniden bağlan düğmesine tıklayıp tekrar oturum aç.",
+  },
+} as const;
 const fail = (status: number, error: string): ApiResponse => ({ status, json: { error } });
 
 export function maskKey(key: string): string {
@@ -185,8 +197,20 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
           return fail(400, `Add this authorized redirect URI to the OAuth client in Google Cloud, then download the JSON again: ${remote.googleRedirectUri}`);
         }
       }
+      const cfg = await loadConfig();
+      if (!remote && client.kind !== 'installed') {
+        return { status: 400, json: { error: UPLOAD_TEXT.webWarning[cfg.language], code: 'web_client' } };
+      }
+      // Tokens are bound to the client that issued them: a different client means every account must sign in again.
+      // Still saved: the user chose this file.
+      const previous = await loadClient().catch(() => null);
+      const changed = Object.keys(cfg.accounts).length > 0 && previous !== null && previous.clientId !== client.clientId;
       await saveClient(client);
-      return ok({ ok: true, kind: client.kind });
+      return ok({
+        ok: true,
+        kind: client.kind,
+        ...(changed ? { clientChanged: true, warning: UPLOAD_TEXT.clientChanged[cfg.language] } : {}),
+      });
     }
 
     if (path === '/accounts' && method === 'POST') {
