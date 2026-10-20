@@ -280,14 +280,7 @@ To remove everything:
 For web AI apps, multiple-gmail can run on your own server behind HTTPS with OAuth 2.1 and an admin password. This is
 optional and separate from the desktop program. See [DEPLOY.md](DEPLOY.md).
 
-## Development
-
-```sh
-npm ci
-npm test
-npx tsc --noEmit
-npm run build:exe
-```
+## Support
 
 Privacy policy: https://efk44.github.io/multiple-gmail/privacy.html . Issues and questions:
 https://github.com/EFK44/multiple-gmail/issues .
