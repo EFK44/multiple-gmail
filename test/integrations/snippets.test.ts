@@ -25,8 +25,8 @@ describe('claudeCodeSpawn', () => {
     const r = claudeCodeSpawn('C:\\npm\\claude.cmd', spec, CMD);
     expect(r.file).toBe(CMD);
     expect(r.verbatim).toBe(true);
-    expect(r.args.slice(0, 3)).toEqual(['/d', '/s', '/c']);
-    expect(r.args[3]).toBe(
+    expect(r.args.slice(0, 4)).toEqual(['/d', '/v:off', '/s', '/c']);
+    expect(r.args[4]).toBe(
       `""C:\\npm\\claude.cmd" "mcp" "add" "--scope" "user" "multiple-gmail" "--" "${exe}" "--stdio""`,
     );
   });
@@ -34,6 +34,9 @@ describe('claudeCodeSpawn', () => {
     expect(() => claudeCodeSpawn('C:\\n"pm\\claude.cmd', spec, CMD)).toThrow();
     expect(() => claudeCodeSpawn('C:\\npm\\claude.cmd', { command: 'C:\\%PATH%\\x.exe', args: ['--stdio'] }, CMD)).toThrow();
     expect(() => claudeCodeSpawn('C:\\npm\\claude.cmd', { command: 'C:\\a"b.exe', args: ['--stdio'] }, CMD)).toThrow();
+  });
+  it('rejects exclamation marks', () => {
+    expect(() => claudeCodeSpawn('C:\\npm\\claude.cmd', { command: 'C:\\a!b.exe', args: ['--stdio'] }, CMD)).toThrow();
   });
   it('rejects an unknown extension', () => {
     expect(() => claudeCodeSpawn('C:\\npm\\claude.ps1', spec, CMD)).toThrow();

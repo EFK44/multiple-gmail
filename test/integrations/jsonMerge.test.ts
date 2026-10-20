@@ -66,4 +66,13 @@ describe('mergeMcpServer', () => {
     await mergeMcpServer(file, 'mcpServers', 'multiple-gmail', { command: exe, args: ['--stdio'] });
     expect(JSON.parse(await readFile(file, 'utf8')).mcpServers['multiple-gmail'].command).toBe(exe);
   });
+
+  it('never overwrites a backup made in the same second', async () => {
+    const file = join(dir, 'cfg.json');
+    await writeFile(file, '{"first":true}');
+    const a = await mergeMcpServer(file, 'mcpServers', 'multiple-gmail', entry);
+    const b = await mergeMcpServer(file, 'mcpServers', 'multiple-gmail', entry);
+    expect(a.backup).not.toBe(b.backup);
+    expect(await readFile(a.backup!, 'utf8')).toBe('{"first":true}');
+  });
 });

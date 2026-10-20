@@ -10,6 +10,7 @@ import { httpSnippets } from './snippets.js';
 
 export const KEY_PLACEHOLDER = '<YOUR_API_KEY>';
 const OUTPUT_LIMIT = 2048;
+export const CLAUDE_DESKTOP_NOTICE = 'Fully quit Claude Desktop (system tray > Quit) and reopen it.';
 
 export type IntegrationsDeps = {
   launch: () => LaunchSpec;
@@ -53,15 +54,17 @@ export function createIntegrationsApi(partial: Partial<IntegrationsDeps> = {}) {
       return guarded(async () => {
         const spec = deps.launch();
         const claude = windows ? await deps.findClaude() : null;
+        const port = await deps.port();
+        const targets = claudeDesktopTargets();
         return ok({
           claudeDesktop: windows
-            ? { supported: true, configPath: claudeDesktopTargets()[0] ?? null, configured: await isClaudeDesktopConfigured() }
+            ? { supported: true, configPath: targets[0] ?? null, configPaths: targets, configured: await isClaudeDesktopConfigured() }
             : { supported: false },
           geminiCli: { configPath: geminiSettingsPath(), configured: await isGeminiConfigured() },
           claudeCode: { available: claude !== null, command: claudeCodeCommand(spec) },
           http: {
-            url: `http://127.0.0.1:${await deps.port()}/mcp`,
-            snippets: httpSnippets(await deps.port(), KEY_PLACEHOLDER),
+            url: `http://127.0.0.1:${port}/mcp`,
+            snippets: httpSnippets(port, KEY_PLACEHOLDER),
             apiKeyPlaceholder: KEY_PLACEHOLDER,
           },
         });
@@ -70,7 +73,7 @@ export function createIntegrationsApi(partial: Partial<IntegrationsDeps> = {}) {
 
     if (path === '/integrations/claude-desktop' && method === 'POST') {
       if (!windows) return ok({ supported: false });
-      return guarded(async () => ok({ ok: true, written: await addToClaudeDesktop(deps.launch()) }));
+      return guarded(async () => ok({ ok: true, written: await addToClaudeDesktop(deps.launch()), notice: CLAUDE_DESKTOP_NOTICE }));
     }
 
     if (path === '/integrations/gemini-cli' && method === 'POST') {

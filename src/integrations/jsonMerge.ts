@@ -1,3 +1,4 @@
+import { constants as fsConstants } from 'node:fs';
 import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { writeFileAtomic } from '../core/fsx.js';
@@ -24,7 +25,7 @@ export async function readJsonConfig(file: string): Promise<Record<string, unkno
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw new IntegrationError(`Could not read ${file}: ${(e as Error).message}. Nothing was changed.`);
   }
-  text = text.replace(/^﻿/, '');
+  text = text.replace(/^\uFEFF/, '');
   if (text.trim() === '') return {};
   let parsed: unknown;
   try {
@@ -36,6 +37,20 @@ export async function readJsonConfig(file: string): Promise<Record<string, unkno
     throw new IntegrationError(`Could not read ${file}: invalid JSON. Fix or move it, nothing was changed.`);
   }
   return parsed;
+}
+
+// Backups never overwrite: <file>.bak-<stamp>, then -2, -3, ... when the name is taken.
+async function copyBackup(file: string): Promise<string> {
+  const base = `${file}.bak-${stamp()}`;
+  for (let n = 1; ; n++) {
+    const target = n === 1 ? base : `${base}-${n}`;
+    try {
+      await copyFile(file, target, fsConstants.COPYFILE_EXCL);
+      return target;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST' || n > 1000) throw e;
+    }
+  }
 }
 
 export async function mergeMcpServer(
@@ -54,8 +69,7 @@ export async function mergeMcpServer(
   await mkdir(dirname(file), { recursive: true });
   let backup: string | null = null;
   if (existing !== null) {
-    backup = `${file}.bak-${stamp()}`;
-    await copyFile(file, backup);
+    backup = await copyBackup(file);
   }
   await writeFileAtomic(file, `${JSON.stringify(doc, null, 2)}\n`);
   return { backup, created: existing === null };

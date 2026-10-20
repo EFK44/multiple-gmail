@@ -88,6 +88,22 @@ describe('integrations routes', () => {
     expect(((await api()('GET', '/integrations', ''))!.json as any).claudeDesktop.configured).toBe(true);
   });
 
+  it('claude-desktop returns the restart notice and writes every existing config with its own backup', async () => {
+    const roaming = join(dir, 'roaming', 'Claude');
+    const store = join(dir, 'local', 'Packages', 'Claude_abc', 'LocalCache', 'Roaming', 'Claude');
+    for (const d of [roaming, store]) {
+      await mkdir(d, { recursive: true });
+      await writeFile(join(d, 'claude_desktop_config.json'), '{}');
+    }
+    const a = api();
+    const j = (await a('POST', '/integrations/claude-desktop', ''))!.json as any;
+    expect(j.notice).toBe('Fully quit Claude Desktop (system tray > Quit) and reopen it.');
+    expect(j.written).toHaveLength(2);
+    for (const w of j.written) expect(w.backup).toMatch(/\.bak-\d{14}/);
+    expect(new Set(j.written.map((w: any) => w.backup)).size).toBe(2);
+    expect(((await a('GET', '/integrations', ''))!.json as any).claudeDesktop.configPaths).toHaveLength(2);
+  });
+
   it('non-Windows claude-desktop and autostart say unsupported', async () => {
     const a = api({ platform: 'linux' });
     expect((await a('POST', '/integrations/claude-desktop', ''))!.json).toEqual({ supported: false });

@@ -25,10 +25,10 @@ export function claudeCodeSpawn(claudePath: string, spec: LaunchSpec, cmdExe: st
   if (ext === '.exe') return { file: claudePath, args, verbatim: false };
   if (ext !== '.cmd') throw new Error('Unsupported claude launcher.');
   for (const v of [claudePath, ...args]) {
-    if (/["%\r\n\0]/.test(v)) throw new Error('Refusing to run: a path contains an unsafe character (" or %).');
+    if (/["%!\r\n\0]/.test(v)) throw new Error('Refusing to run: a path contains an unsafe character (" % or !).');
   }
   const line = [claudePath, ...args].map((v) => `"${v}"`).join(' ');
-  return { file: cmdExe, args: ['/d', '/s', '/c', `"${line}"`], verbatim: true };
+  return { file: cmdExe, args: ['/d', '/v:off', '/s', '/c', `"${line}"`], verbatim: true };
 }
 
 export type RunResult = { code: number; stdout: string; stderr: string };
@@ -38,6 +38,7 @@ function run(file: string, args: string[], verbatim: boolean): Promise<RunResult
     execFile(
       file,
       args,
+      // Note: the timeout kills only the process started here (cmd.exe for .cmd launchers), not its children.
       { timeout: 60_000, windowsHide: true, windowsVerbatimArguments: verbatim, cwd: system32Dir(), maxBuffer: 1024 * 1024 },
       (err, stdout, stderr) => {
         const raw = err ? (err as { code?: unknown }).code : 0;
