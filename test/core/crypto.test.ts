@@ -97,7 +97,7 @@ describe('ensureSecureDir', () => {
 });
 
 describe('systemBinary', () => {
-  it('resolves absolute paths under SystemRoot', () => {
+  it.skipIf(process.platform !== 'win32')('resolves absolute paths under SystemRoot', () => {
     const root = systemRoot();
     expect(isAbsolute(root)).toBe(true);
     for (const name of ['powershell', 'icacls', 'explorer', 'where']) {
