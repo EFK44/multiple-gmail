@@ -96,7 +96,7 @@
       "title": "Create the key file",
       "why": "The client is your app's ID card. Google gives it to you as a small file with a name like client_secret_123.json.",
       "do1": "Open Clients and click Create client.",
-      "do2": "Application type: choose Desktop app. Name: anything, for example multiple-gmail desktop. Click Create.",
+      "do2": "Application type: choose Desktop app. Name: anything, for example multiple-gmail desktop.",
       "do3": "Tick the box \"Use this client for an AI-powered agent\" if you see it, then click Create.",
       "note": "Download it right away. Google may show the secret part only once. If you missed it, delete the client and create a new one.",
       "do4": "In the window that opens, click Download JSON and save the file where you can find it, for example in Downloads."

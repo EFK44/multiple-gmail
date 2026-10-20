@@ -25,5 +25,7 @@ afterAll(() => {
 
 /** Puts MULTIPLE_GMAIL_HOME back to the per-worker sandbox home. Use in afterEach instead of restoring `undefined`. */
 export function restoreTestHome(): void {
-  process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME ?? '';
+  const home = process.env.MULTIPLE_GMAIL_TEST_HOME;
+  if (home) process.env.MULTIPLE_GMAIL_HOME = home;
+  else delete process.env.MULTIPLE_GMAIL_HOME;
 }

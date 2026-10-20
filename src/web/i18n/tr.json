@@ -96,7 +96,7 @@
       "title": "Anahtar dosyasını oluştur",
       "why": "İstemci (client), uygulamanın kimlik kartıdır. Google bunu sana client_secret_123.json gibi adı olan küçük bir dosya olarak verir.",
       "do1": "\"Clients\" sayfasını aç ve \"Create client\" düğmesine tıkla.",
-      "do2": "\"Application type\": \"Desktop app\" seç. Ad: istediğin bir şey, örneğin multiple-gmail masaüstü. \"Create\" de.",
+      "do2": "\"Application type\": \"Desktop app\" seç. Ad: istediğin bir şey, örneğin multiple-gmail masaüstü.",
       "do3": "Görürsen \"Use this client for an AI-powered agent\" kutusunu işaretle, sonra \"Create\" de.",
       "note": "Dosyayı hemen indir. Google gizli kısmı sadece bir kez gösterebilir. Kaçırdıysan istemciyi sil ve yenisini oluştur.",
       "do4": "Açılan pencerede \"Download JSON\" düğmesine tıkla ve dosyayı bulabileceğin bir yere, örneğin İndirilenler klasörüne kaydet."
