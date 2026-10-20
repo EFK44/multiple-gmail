@@ -4,17 +4,15 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { runCli, type CliIo } from '../../src/modes/cli.js';
 import { saveConfig } from '../../src/core/config.js';
+import { restoreTestHome } from '../setup.js';
 
 let dir: string;
-let prev: string | undefined;
 beforeEach(async () => {
-  prev = process.env.MULTIPLE_GMAIL_HOME;
   dir = await mkdtemp(join(tmpdir(), 'mg-cli-'));
   process.env.MULTIPLE_GMAIL_HOME = dir;
 });
 afterEach(async () => {
-  if (prev === undefined) process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME;
-  else process.env.MULTIPLE_GMAIL_HOME = prev;
+  restoreTestHome();
   await rm(dir, { recursive: true, force: true });
 });
 

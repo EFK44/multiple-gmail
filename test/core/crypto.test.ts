@@ -9,6 +9,7 @@ import { open, seal } from '../../src/core/crypto.js';
 import { keyFromEnv } from '../../src/core/masterKey.js';
 import { ensureSecureDir } from '../../src/core/secureDir.js';
 import { system32Dir, systemBinary, systemRoot } from '../../src/core/sysbin.js';
+import { restoreTestHome } from '../setup.js';
 
 const isWin = process.platform === 'win32';
 
@@ -20,7 +21,7 @@ beforeEach(async () => {
   process.env.MULTIPLE_GMAIL_HOME = home;
 });
 afterEach(async () => {
-  process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME;
+  restoreTestHome();
   await rm(root, { recursive: true, force: true });
 });
 

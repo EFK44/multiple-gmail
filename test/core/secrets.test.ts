@@ -14,6 +14,7 @@ import {
   saveClient,
   saveToken,
 } from '../../src/core/secrets.js';
+import { restoreTestHome } from '../setup.js';
 
 let root: string;
 let setMasterKey = false;
@@ -28,7 +29,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   resetMasterKeyCacheForTests();
-  process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME;
+  restoreTestHome();
   if (setMasterKey) {
     delete process.env.MULTIPLE_GMAIL_MASTER_KEY;
     setMasterKey = false;

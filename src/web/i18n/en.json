@@ -81,7 +81,8 @@
       "do2": "App information: type an app name, for example My Gmail helper, and choose your email as the user support email. Click Next.",
       "do3": "Audience: choose External. Click Next.",
       "do4": "Contact information: type your email. Click Next.",
-      "do5": "Tick the box to agree to the Google API Services User Data Policy, then click Continue and Create."
+      "do5": "Tick the box to agree to the Google API Services User Data Policy, then click Continue and Create.",
+      "do6": "Open Branding. Under App domain, fill in Application home page, Application privacy policy link and Authorized domains, then click Save. If you have no website of your own, use this project's public pages: home page https://efk44.github.io/multiple-gmail/ , privacy policy https://efk44.github.io/multiple-gmail/privacy.html , authorized domain efk44.github.io . If you have your own domain, you may use that instead. Publishing in the last step stays disabled until these are filled in."
     },
     "s4": {
       "title": "Allow Gmail access",
@@ -96,15 +97,18 @@
       "why": "The client is your app's ID card. Google gives it to you as a small file with a name like client_secret_123.json.",
       "do1": "Open Clients and click Create client.",
       "do2": "Application type: choose Desktop app. Name: anything, for example multiple-gmail desktop. Click Create.",
-      "do3": "In the window that opens, click Download JSON and save the file where you can find it, for example in Downloads.",
-      "note": "Download it right away. Google may show the secret part only once. If you missed it, delete the client and create a new one."
+      "do3": "Tick the box \"Use this client for an AI-powered agent\" if you see it, then click Create.",
+      "note": "Download it right away. Google may show the secret part only once. If you missed it, delete the client and create a new one.",
+      "do4": "In the window that opens, click Download JSON and save the file where you can find it, for example in Downloads."
     },
     "s6": {
       "title": "Publish the app",
       "why": "New apps start in Testing mode. In Testing mode Google signs you out every 7 days and you would have to reconnect every account each week. Publishing stops that.",
       "do1": "Open Audience. Under Publishing status, click Publish app, then Confirm.",
-      "do2": "The status should now say In production.",
-      "do3": "Google may say your app needs verification. You can ignore that: verification is for apps that other people use."
+      "do2": "If Publish app is greyed out, hover over it to see what is missing. It is almost always the App domain fields on the Branding page (see the earlier step).",
+      "do3": "The status should now say In production.",
+      "do4": "Google may say your app needs verification. You can ignore that: verification is for apps that other people use.",
+      "do5": "Prefer not to publish? You can stay in Testing: open Audience, add each Gmail address under Test users. Tokens then expire every 7 days and multiple-gmail shows Reconnect next to the account."
     },
     "aheadTitle": "Two screens you will see when you sign in later",
     "ahead1Title": "\"Google hasn't verified this app\"",

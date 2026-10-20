@@ -9,6 +9,7 @@ import { resetMasterKeyCacheForTests } from '../../src/core/masterKey.js';
 import { loadToken, saveClient, saveToken } from '../../src/core/secrets.js';
 import { clearGmailCache, getGmail, setGmailFactoryForTests, type GmailApi } from '../../src/gmail/client.js';
 import { getAccountStatus, setAccountStatus } from '../../src/gmail/errors.js';
+import { restoreTestHome } from '../setup.js';
 
 let root: string;
 let setKey = false;
@@ -26,7 +27,7 @@ afterEach(async () => {
   setGmailFactoryForTests(null);
   clearGmailCache();
   resetMasterKeyCacheForTests();
-  process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME;
+  restoreTestHome();
   if (setKey) {
     delete process.env.MULTIPLE_GMAIL_MASTER_KEY;
     setKey = false;

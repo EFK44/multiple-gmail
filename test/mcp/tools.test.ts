@@ -8,6 +8,7 @@ import type { GmailApi } from '../../src/gmail/client.js';
 import { buildMcpServer } from '../../src/mcp/buildServer.js';
 import { resolveAccounts } from '../../src/mcp/accountArg.js';
 import { parseAddressList } from '../../src/gmail/shape.js';
+import { restoreTestHome } from '../setup.js';
 
 const TOOL_NAMES = [
   'create_draft',
@@ -128,7 +129,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await client.close();
-  process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME;
+  restoreTestHome();
   await rm(root, { recursive: true, force: true });
 });
 

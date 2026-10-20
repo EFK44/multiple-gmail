@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig, saveConfig, validateAlias } from '../../src/core/config.js';
 import { configPath, dataDir, tokenPath } from '../../src/core/paths.js';
 import { writeFileAtomic } from '../../src/core/fsx.js';
+import { restoreTestHome } from '../setup.js';
 
 let home: string;
 beforeEach(async () => {
@@ -12,7 +13,7 @@ beforeEach(async () => {
   process.env.MULTIPLE_GMAIL_HOME = home;
 });
 afterEach(async () => {
-  process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME;
+  restoreTestHome();
   await rm(home, { recursive: true, force: true });
 });
 
@@ -82,7 +83,7 @@ describe('dataDir guard', () => {
     try {
       expect(() => dataDir()).toThrow('Tests must set MULTIPLE_GMAIL_HOME');
     } finally {
-      process.env.MULTIPLE_GMAIL_HOME = saved;
+      process.env.MULTIPLE_GMAIL_HOME = saved ?? process.env.MULTIPLE_GMAIL_TEST_HOME;
     }
   });
 });

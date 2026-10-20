@@ -46,7 +46,7 @@ describe('wizard i18n', () => {
 });
 
 // Keys app.js builds with template strings; the literal-key test above cannot see them.
-const GUIDE_DOS: Record<string, number> = { s1: 3, s2: 2, s3: 5, s4: 3, s5: 3, s6: 3 };
+const GUIDE_DOS: Record<string, number> = { s1: 3, s2: 2, s3: 6, s4: 3, s5: 4, s6: 5 };
 const DYNAMIC_KEYS = [
   ...['welcome', 'google', 'upload', 'accounts', 'ai', 'dashboard'].map((s) => `nav.${s}`),
   'lang.en',

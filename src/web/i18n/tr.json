@@ -81,7 +81,8 @@
       "do2": "\"App information\": bir uygulama adı yaz, örneğin Gmail yardımcım, ve destek e-postası (\"User support email\") olarak kendi adresini seç. \"Next\" de.",
       "do3": "\"Audience\": \"External\" seç. \"Next\" de.",
       "do4": "\"Contact information\": e-posta adresini yaz. \"Next\" de.",
-      "do5": "Google API Hizmetleri Kullanıcı Verileri Politikası'nı kabul eden kutuyu işaretle, sonra \"Continue\" ve \"Create\" düğmelerine tıkla."
+      "do5": "Google API Hizmetleri Kullanıcı Verileri Politikası'nı kabul eden kutuyu işaretle, sonra \"Continue\" ve \"Create\" düğmelerine tıkla.",
+      "do6": "\"Branding\" sayfasını aç. \"App domain\" altında \"Application home page\", \"Application privacy policy link\" ve \"Authorized domains\" alanlarını doldur, sonra \"Save\" de. Kendi web siten yoksa bu projenin herkese açık sayfalarını kullan: ana sayfa https://efk44.github.io/multiple-gmail/ , gizlilik politikası https://efk44.github.io/multiple-gmail/privacy.html , yetkili alan adı efk44.github.io . Kendi alan adın varsa onu da kullanabilirsin. Son adımdaki yayınlama düğmesi, bunlar doldurulana kadar kapalı kalır."
     },
     "s4": {
       "title": "Gmail iznini ekle",
@@ -96,15 +97,18 @@
       "why": "İstemci (client), uygulamanın kimlik kartıdır. Google bunu sana client_secret_123.json gibi adı olan küçük bir dosya olarak verir.",
       "do1": "\"Clients\" sayfasını aç ve \"Create client\" düğmesine tıkla.",
       "do2": "\"Application type\": \"Desktop app\" seç. Ad: istediğin bir şey, örneğin multiple-gmail masaüstü. \"Create\" de.",
-      "do3": "Açılan pencerede \"Download JSON\" düğmesine tıkla ve dosyayı bulabileceğin bir yere, örneğin İndirilenler klasörüne kaydet.",
-      "note": "Dosyayı hemen indir. Google gizli kısmı sadece bir kez gösterebilir. Kaçırdıysan istemciyi sil ve yenisini oluştur."
+      "do3": "Görürsen \"Use this client for an AI-powered agent\" kutusunu işaretle, sonra \"Create\" de.",
+      "note": "Dosyayı hemen indir. Google gizli kısmı sadece bir kez gösterebilir. Kaçırdıysan istemciyi sil ve yenisini oluştur.",
+      "do4": "Açılan pencerede \"Download JSON\" düğmesine tıkla ve dosyayı bulabileceğin bir yere, örneğin İndirilenler klasörüne kaydet."
     },
     "s6": {
       "title": "Uygulamayı yayınla",
       "why": "Yeni uygulamalar \"Testing\" (deneme) modunda başlar. Deneme modunda Google seni 7 günde bir oturumdan çıkarır ve her hafta bütün hesapları yeniden bağlaman gerekir. Yayınlamak bunu önler.",
       "do1": "\"Audience\" sayfasını aç. \"Publishing status\" altında \"Publish app\" düğmesine, sonra \"Confirm\" düğmesine tıkla.",
-      "do2": "Durum artık \"In production\" (yayında) yazmalı.",
-      "do3": "Google uygulamanın doğrulanması gerektiğini söyleyebilir. Bunu boş verebilirsin: doğrulama, başka insanların kullandığı uygulamalar içindir."
+      "do2": "\"Publish app\" düğmesi gri ve tıklanamıyorsa üzerine gel, neyin eksik olduğunu gösterir. Neredeyse her zaman \"Branding\" sayfasındaki \"App domain\" alanlarıdır (önceki adıma bak).",
+      "do3": "Durum artık \"In production\" (yayında) yazmalı.",
+      "do4": "Google uygulamanın doğrulanması gerektiğini söyleyebilir. Bunu boş verebilirsin: doğrulama, başka insanların kullandığı uygulamalar içindir.",
+      "do5": "Yayınlamak istemezsen \"Testing\" modunda kalabilirsin: \"Audience\" sayfasını aç, her Gmail adresini \"Test users\" altına ekle. Bu durumda izinler 7 günde bir sona erer ve multiple-gmail hesabın yanında \"Yeniden bağla\" gösterir."
     },
     "aheadTitle": "Daha sonra giriş yaparken göreceğin iki ekran",
     "ahead1Title": "\"Google bu uygulamayı doğrulamadı\" (Google hasn't verified this app)",

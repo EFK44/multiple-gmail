@@ -25,10 +25,10 @@ const STEPS = ['welcome', 'google', 'upload', 'accounts', 'ai'];
 const GUIDE = [
   { id: 's1', link: LINKS.projectCreate, dos: 3 },
   { id: 's2', link: LINKS.gmailApi, dos: 2 },
-  { id: 's3', link: LINKS.authOverview, dos: 5 },
+  { id: 's3', link: LINKS.authOverview, dos: 6 },
   { id: 's4', link: LINKS.scopes, dos: 3, scope: true },
-  { id: 's5', link: LINKS.clients, dos: 3, note: true },
-  { id: 's6', link: LINKS.audience, dos: 3 },
+  { id: 's5', link: LINKS.clients, dos: 4, note: true },
+  { id: 's6', link: LINKS.audience, dos: 5 },
 ];
 
 const S = {

@@ -22,3 +22,8 @@ afterAll(() => {
     // best effort
   }
 });
+
+/** Puts MULTIPLE_GMAIL_HOME back to the per-worker sandbox home. Use in afterEach instead of restoring `undefined`. */
+export function restoreTestHome(): void {
+  process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME ?? '';
+}

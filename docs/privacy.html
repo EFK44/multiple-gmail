@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>multiple-gmail Privacy Policy</title>
+<meta name="description" content="Privacy policy for the multiple-gmail open-source desktop app.">
+<style>
+:root{--bg:#ffffff;--fg:#1c2230;--muted:#5a6475;--card:#f3f5f9;--line:#d8dde7;--accent:#1a56c4}
+@media (prefers-color-scheme:dark){:root{--bg:#12151c;--fg:#e7eaf1;--muted:#a3adbf;--card:#1b2029;--line:#2c3442;--accent:#7fb0ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:2rem 1rem 3rem}
+h1{font-size:2rem;line-height:1.2;margin:0 0 .5rem}
+h2{font-size:1.25rem;margin:2rem 0 .5rem}
+p,li{overflow-wrap:anywhere}
+a{color:var(--accent)}
+.lead{color:var(--muted);font-size:1.1rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:1rem 1.25rem;margin:1rem 0}
+code{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:0 .3em;overflow-wrap:anywhere}
+nav a{margin-right:1rem}
+footer{margin-top:2.5rem;color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body>
+<main>
+<nav><a href="index.html">Home</a><a href="https://github.com/EFK44/multiple-gmail">GitHub</a></nav>
+<h1>Privacy Policy</h1>
+<p class="lead">multiple-gmail, an open-source desktop app. Effective date: 2026-10-20.</p>
+
+<h2>Summary</h2>
+<div class="card">
+<p>multiple-gmail runs on your own computer, with your own Google OAuth client. The app does not send your data to
+the developer or to any third party. Your Gmail data goes only between your computer and Google.</p>
+</div>
+
+<h2>Who runs the app</h2>
+<p>multiple-gmail is free software that each person installs and runs themselves. The developer does not operate a
+service, does not receive your mail, and cannot see your accounts. You create your own Google Cloud project and OAuth
+client, so you are the one who authorizes access to your Gmail accounts.</p>
+
+<h2>What data the app accesses</h2>
+<p>When you connect a Gmail account, the app accesses it through Google's Gmail API with the
+<code>https://www.googleapis.com/auth/gmail.modify</code> scope. This data is used only to provide the features you ask
+for through your AI app: searching mail, reading messages and threads, creating drafts, sending a message after you
+approve it, and managing labels. The app also reads your email address so it can show which account is connected.
+The app has no tools to delete mail, drafts or labels.</p>
+
+<h2>How data is stored</h2>
+<p>Access tokens, refresh tokens and your OAuth client credentials are stored only on your computer, in an encrypted
+form. On Windows, the encryption key is protected with Windows DPAPI for your user account. The app does not keep a
+copy of your mail on disk beyond what your AI app requests in the moment. Mail content that an AI app receives from
+the tools is handled by that AI app under its own terms and privacy policy.</p>
+
+<h2>What is shared</h2>
+<p>The app sends no data to the developer, and it does not use analytics, advertising or tracking. It does not sell,
+rent or transfer your data to third parties. The only network traffic is between your computer and Google's APIs.</p>
+
+<h2>Optional server mode</h2>
+<p>The project includes an optional mode for running multiple-gmail on a server, for web AI apps. In this mode you run
+and control the server yourself. Data then stays on the server you operate. The developer has no access to it.</p>
+
+<h2>Google API Services User Data Policy</h2>
+<p>The use and transfer of information received from Google APIs by multiple-gmail adheres to the
+<a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>,
+including the Limited Use requirements. Data from your Gmail account is used only to provide and improve the
+user-facing features you request, is not used for advertising, is not sold, and is not read by humans except as you
+direct it through your own AI app or as required by law.</p>
+
+<h2>Your control: revoke access and delete data</h2>
+<ul>
+<li>Revoke the app's access to your Google account at any time at
+<a href="https://myaccount.google.com/permissions">https://myaccount.google.com/permissions</a>.</li>
+<li>Remove an account inside the app. This also asks Google to revoke its token.</li>
+<li>Delete all local data by deleting the data folder: <code>%LOCALAPPDATA%\multiple-gmail</code> on Windows, or
+<code>~/.multiple-gmail</code> on other systems.</li>
+</ul>
+
+<h2>Changes to this policy</h2>
+<p>If this policy changes, the new version will be published on this page with an updated effective date.</p>
+
+<h2>Contact</h2>
+<p>For questions about this policy, open an issue at
+<a href="https://github.com/EFK44/multiple-gmail/issues">https://github.com/EFK44/multiple-gmail/issues</a>.</p>
+
+<footer><p>Effective date: 2026-10-20.</p></footer>
+</main>
+</body>
+</html>
