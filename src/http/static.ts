@@ -1,9 +1,10 @@
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { getAsset, isSea } from 'node:sea';
+import { srcPath } from '../core/runtime.js';
 
-// Dev: files live in src/web next to this module. Task 12 swaps the reader for SEA assets behind readStatic.
-const WEB_DIR = fileURLToPath(new URL('../web/', import.meta.url));
+// Dev and `node build/main.cjs`: files live in src/web. Packaged exe: SEA assets keyed "web/<posix path>".
+const WEB_DIR = srcPath('web');
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -16,7 +17,28 @@ const TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
+async function readFromDisk(segments: string[]): Promise<Buffer | null> {
+  const root = resolve(WEB_DIR);
+  const file = resolve(root, ...segments);
+  if (!file.startsWith(root + sep)) return null;
+  try {
+    if (!(await stat(file)).isFile()) return null;
+    return await readFile(file);
+  } catch {
+    return null;
+  }
+}
+
+function readFromSea(segments: string[]): Buffer | null {
+  try {
+    return Buffer.from(getAsset(`web/${segments.join('/')}`) as ArrayBuffer);
+  } catch {
+    return null; // getAsset throws for an unknown key
+  }
+}
+
 // Returns the file for a URL path (no query), or null for anything missing, hidden, or outside the web dir.
+// The same validation runs before either reader.
 export async function readStatic(urlPath: string): Promise<{ body: Buffer; type: string } | null> {
   if (!urlPath.startsWith('/')) return null;
   let decoded: string;
@@ -31,13 +53,6 @@ export async function readStatic(urlPath: string): Promise<{ body: Buffer; type:
   if (segments.some((s) => s === '' || s.startsWith('.'))) return null;
   const type = TYPES[extname(decoded).toLowerCase()];
   if (!type) return null;
-  const root = resolve(WEB_DIR);
-  const file = resolve(root, ...segments);
-  if (!file.startsWith(root + sep)) return null;
-  try {
-    if (!(await stat(file)).isFile()) return null;
-    return { body: await readFile(file), type };
-  } catch {
-    return null;
-  }
+  const body = isSea() ? readFromSea(segments) : await readFromDisk(segments);
+  return body ? { body, type } : null;
 }
