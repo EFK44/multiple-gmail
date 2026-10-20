@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import { gmail } from '@googleapis/gmail';
 import { CodeChallengeMethod, OAuth2Client } from 'google-auth-library';
-import type { ConnectedAccount } from './accounts.js';
+import { REVOKE_URL, type ConnectedAccount } from './accounts.js';
 import { loadConfig, saveConfig, validateAlias } from './config.js';
 import { loadClient, saveToken, type OAuthClient } from './secrets.js';
 
@@ -73,6 +73,7 @@ export type LoopbackDeps = {
     redirectUri: string;
   }) => Promise<TokenSet>;
   getProfileEmail?: (accessToken: string, client: OAuthClient) => Promise<string>;
+  fetch?: typeof fetch;
   timeoutMs?: number;
 };
 
@@ -135,6 +136,29 @@ async function defaultGetProfileEmail(accessToken: string, client: OAuthClient):
   const email = res.data.emailAddress;
   if (!email) throw new Error('Gmail did not return the account email address.');
   return email;
+}
+
+export function formatDuration(ms: number): string {
+  if (ms >= 60_000) {
+    const n = Math.round(ms / 60_000);
+    return `${n} minute${n === 1 ? '' : 's'}`;
+  }
+  const n = Math.max(1, Math.round(ms / 1000));
+  return `${n} second${n === 1 ? '' : 's'}`;
+}
+
+// Best effort: a refresh token that will not be stored must not stay valid at Google. Errors are ignored.
+async function revokeQuietly(doFetch: typeof fetch, token: string): Promise<void> {
+  try {
+    await doFetch(REVOKE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token }).toString(),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    // ignored
+  }
 }
 
 function sameEmail(a: string, b: string): boolean {
@@ -233,6 +257,7 @@ export async function startLoopbackAuth(
   const exchangeCode = deps.exchangeCode ?? defaultExchangeCode;
   const getProfileEmail = deps.getProfileEmail ?? defaultGetProfileEmail;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const doFetch = deps.fetch ?? fetch;
 
   const cfg = await loadConfig();
   const existing = cfg.accounts[a];
@@ -278,7 +303,7 @@ export async function startLoopbackAuth(
   };
 
   const timer = setTimeout(() => {
-    finish({ err: new AuthFlowError('timeout', 'Google sign-in timed out after 5 minutes. Start again.') });
+    finish({ err: new AuthFlowError('timeout', `Google sign-in timed out after ${formatDuration(timeoutMs)}. Start again.`) });
   }, timeoutMs);
   timer.unref?.();
 
@@ -297,19 +322,24 @@ export async function startLoopbackAuth(
     if (!tokens.accessToken) throw new Error('Google did not return an access token. Try again.');
     const email = (await getProfileEmail(tokens.accessToken, client)).trim();
 
+    const refreshToken = tokens.refreshToken;
+    const reject = async (message: string): Promise<never> => {
+      await revokeQuietly(doFetch, refreshToken);
+      throw new Error(message);
+    };
     const now = await loadConfig();
     const current = now.accounts[a];
     if (opts.reconnect) {
-      if (!current) throw new Error(`No account named "${a}" to reconnect.`);
+      if (!current) return reject(`No account named "${a}" to reconnect.`);
       if (!sameEmail(current.email, email)) {
-        throw new Error(`Signed in as ${email} but this alias belongs to ${current.email}`);
+        return reject(`Signed in as ${email} but this alias belongs to ${current.email}`);
       }
     } else if (current) {
-      throw new Error(`Alias already exists, use Reconnect: "${a}".`);
+      return reject(`Alias already exists, use Reconnect: "${a}".`);
     }
     for (const [other, entry] of Object.entries(now.accounts)) {
       if (other !== a && sameEmail(entry.email, email)) {
-        throw new Error(`This Google account (${email}) is already connected as alias ${other}.`);
+        return reject(`This Google account (${email}) is already connected as alias ${other}.`);
       }
     }
 
@@ -337,6 +367,8 @@ export async function startLoopbackAuth(
       return sendPage(res, 400, pageLang, 'invalid');
     }
     handling = true;
+    // From here the callback owns the outcome: a timeout must not fire while the exchange is in flight.
+    clearTimeout(timer);
 
     const error = q.get('error');
     if (error) {

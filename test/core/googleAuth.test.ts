@@ -8,6 +8,7 @@ import {
   GMAIL_SCOPE,
   beginAuth,
   classifyOAuthError,
+  formatDuration,
   startLoopbackAuth,
   type LoopbackDeps,
   type TokenSet,
@@ -256,5 +257,59 @@ describe('startLoopbackAuth', () => {
   it('fails when no OAuth client has been uploaded', async () => {
     const d: LoopbackDeps = { ...deps().deps, loadClient: async () => null };
     await expect(startLoopbackAuth('alpha', { deps: d })).rejects.toThrow(/OAuth client/);
+  });
+
+  it('does not time out mid-exchange: the timer is cleared once the callback is handled', async () => {
+    const base = deps({ timeoutMs: 150 }).deps;
+    const d: LoopbackDeps = {
+      ...base,
+      exchangeCode: async () => {
+        await new Promise((r) => setTimeout(r, 500));
+        return { refreshToken: 'refresh-1', accessToken: 'access-1', expiryDate: 1, scope: GMAIL_SCOPE };
+      },
+    };
+    const { url, done } = await startLoopbackAuth('alpha', { deps: d });
+    await fetch(callbackUrl(url, { state: stateOf(url), code: 'code-1' }));
+    expect(await done).toEqual({ alias: 'alpha', email: 'you@example.com' });
+    expect((await loadToken('alpha'))?.refreshToken).toBe('refresh-1');
+  });
+
+  it('timeout message reflects the configured timeout', async () => {
+    const s = await startLoopbackAuth('beta', { deps: deps({ timeoutMs: 100 }).deps });
+    await expect(s.done).rejects.toThrow(/after 1 second/);
+    expect(formatDuration(120_000)).toBe('2 minutes');
+    expect(formatDuration(60_000)).toBe('1 minute');
+    expect(formatDuration(300_000)).toBe('5 minutes');
+  });
+
+  it('revokes the new refresh token on reconnect email mismatch and on duplicate email', async () => {
+    const calls: { url: string; body: string }[] = [];
+    const fakeFetch = (async (url: string, init: { body: string }) => {
+      calls.push({ url, body: init.body });
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
+
+    await seedConfig({
+      alpha: { email: 'you@example.com', addedAt: '2026-01-01T00:00:00.000Z' },
+      beta: { email: 'dup@example.com', addedAt: '2026-01-01T00:00:00.000Z' },
+    });
+    const bad = await startLoopbackAuth('alpha', {
+      reconnect: true,
+      deps: { ...deps({ email: 'other@example.com' }).deps, fetch: fakeFetch },
+    });
+    bad.done.catch(() => {});
+    await fetch(callbackUrl(bad.url, { state: stateOf(bad.url), code: 'c' }));
+    await expect(bad.done).rejects.toThrow(/Signed in as other@example.com/);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe('https://oauth2.googleapis.com/revoke');
+    expect(calls[0].body).toContain('token=refresh-1');
+
+    const dup = await startLoopbackAuth('gamma', {
+      deps: { ...deps({ email: 'dup@example.com' }).deps, fetch: fakeFetch },
+    });
+    dup.done.catch(() => {});
+    await fetch(callbackUrl(dup.url, { state: stateOf(dup.url), code: 'c' }));
+    await expect(dup.done).rejects.toThrow(/already connected as alias beta/);
+    expect(calls).toHaveLength(2);
   });
 });
