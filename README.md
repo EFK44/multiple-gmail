@@ -105,6 +105,19 @@ the first start, so the encryption key goes into your desktop keyring instead of
 installed but the keyring is locked or not running (for example over SSH), multiple-gmail stops with a message
 instead of making a second key. You can also set `MULTIPLE_GMAIL_MASTER_KEY` yourself (see DEPLOY.md, `gen-key`).
 
+### Updating
+
+1. Fully quit Claude Desktop (on Windows also from the system tray; on macOS Claude > Quit Claude or Cmd+Q) and quit
+   any other AI app that uses multiple-gmail, then close the multiple-gmail window. On Windows a running copy locks the
+   exe, so it cannot be replaced while Claude Desktop or the server window still runs it.
+2. Replace the file with the new download at the same path and with the same file name (rename the download the way
+   you renamed the first one). Claude Desktop, Claude Code, Gemini CLI and Start at login store that exact path; a
+   new path or name means they start nothing. If you did move it, open the wizard from the new location and click
+   **Update** (or the add button) for each app.
+3. Start multiple-gmail again, then Claude Desktop.
+
+The release notes list anything else that changed.
+
 ### Build from source
 
 You need Node.js 24 and npm.
@@ -163,25 +176,35 @@ by its name or by its email address.
 The same thing works from a terminal:
 
 ```sh
-multiple-gmail.exe accounts list
-multiple-gmail.exe accounts add --name "Work"
-multiple-gmail.exe accounts reconnect work
-multiple-gmail.exe accounts rename work "Shop"
-multiple-gmail.exe accounts remove "Shop"
+multiple-gmail accounts list
+multiple-gmail accounts add --name "Work"
+multiple-gmail accounts reconnect work
+multiple-gmail accounts rename work "Shop"
+multiple-gmail accounts remove "Shop"
 ```
+
+On Windows the program is `multiple-gmail.exe`. Unless its folder is on your `PATH`, give the full path, for example:
+
+- Windows (PowerShell): `& "$env:USERPROFILE\Apps\multiple-gmail.exe" accounts list`
+- macOS: `~/Applications/multiple-gmail accounts list`
+- Linux: `~/.local/bin/multiple-gmail accounts list`
 
 ## Connect your AI app
 
 The last wizard step does most of this with a button. By hand:
 
 - **Claude Desktop:** the wizard has an "Add to Claude Desktop" button. It makes a backup of
-  `claude_desktop_config.json` first and adds the server without touching your other settings. Restart Claude Desktop
-  afterwards.
+  `claude_desktop_config.json` first and adds the server without touching your other settings. Fully quit Claude
+  Desktop *before* you click the button (Claude Desktop may rewrite its config file when it quits, which would undo
+  the change), then start it again afterwards.
 - **Claude Code:** run the command the wizard shows, which has this form:
   `claude mcp add --scope user multiple-gmail -- "C:\path\to\multiple-gmail.exe" --stdio` (on macOS and Linux, the
   path of the `multiple-gmail` program instead). The wizard can also run it for you.
-- **Gemini CLI:** the wizard can add the server to `~/.gemini/settings.json` (with a backup), or add a `multiple-gmail`
-  entry under `mcpServers` with the command `multiple-gmail.exe` and the argument `--stdio`.
+- **Gemini CLI:** the wizard can add the server to `~/.gemini/settings.json` (with a backup). By hand, add a
+  `multiple-gmail` entry under `mcpServers` whose command is the absolute path of the program and whose argument is
+  `--stdio`, for example `{"command": "C:\\Users\\<you>\\Apps\\multiple-gmail.exe", "args": ["--stdio"]}` on Windows
+  (backslashes doubled in JSON) or `{"command": "/home/<you>/.local/bin/multiple-gmail", "args": ["--stdio"]}` on Linux
+  (on macOS, for example `/Users/<you>/Applications/multiple-gmail`).
 - **Other apps (Cursor, VS Code, LM Studio, and so on):** use the HTTP address `http://127.0.0.1:47110/mcp` and the
   header `Authorization: Bearer <your local key>`. The wizard shows ready-to-copy JSON with your key. The HTTP server
   runs while the exe is running.
@@ -197,7 +220,8 @@ The last wizard step does most of this with a button. By hand:
   app access. The wizard shows these steps when it detects the block.
 - **"This setup link has expired or was already used".** Each setup link works once, and the browser uses it
   right away. Close that tab and open multiple-gmail again: it opens a fresh tab (if it is already running, the new
-  tab may appear in another browser window). To get a link to paste by hand, run `multiple-gmail.exe --print-url`.
+  tab may appear in another browser window). To get a link to paste by hand, run
+  `multiple-gmail --print-url` (`multiple-gmail.exe` on Windows).
 - **Port in use.** The default port is 47110. Change `port` in `config.json` in the data folder (see
   `config.example.json`) and start again.
 - **Claude Desktop does not show the tools.** Fully quit Claude Desktop (also from the tray) and start it again. Check
@@ -208,6 +232,9 @@ The last wizard step does most of this with a button. By hand:
   `~/Library/Application Support/Claude/claude_desktop_config.json` (quit with Cmd+Q). On Linux the wizard offers
   this only when `~/.config/Claude` exists.
 - **SmartScreen blocks the exe.** More info, then Run anyway (see Install).
+- **`MULTIPLE_GMAIL_HOME` on a USB stick, SD card or network drive.** Not supported: the data folder must be on a
+  local disk whose file system supports hard links (NTFS, APFS, ext4 and similar). FAT32, exFAT and network shares
+  (SMB, NFS) are not supported.
 
 ## Where your data lives, and how to uninstall
 

@@ -152,6 +152,9 @@ PUBLIC_URL=https://mail.example.com MULTIPLE_GMAIL_MASTER_KEY='...' ADMIN_PASSWO
   MULTIPLE_GMAIL_HOME=/var/lib/multiple-gmail node build/main.cjs serve --remote
 ```
 
+Outside Docker, `MULTIPLE_GMAIL_HOME` is required: the default `/data` is meant for the container volume. Point it at
+a folder on a local disk that only the service user can read.
+
 `HOST=127.0.0.1` keeps the port reachable only from the same machine, where your reverse proxy runs. Keep
 `build/main.cjs` and `src/web` together; the setup pages are read from `src/web`.
 
@@ -164,7 +167,7 @@ PUBLIC_URL=https://mail.example.com MULTIPLE_GMAIL_MASTER_KEY='...' ADMIN_PASSWO
 | `ADMIN_PASSWORD_HASH` | yes | | The `scrypt$...` line from `hash-password`. |
 | `PORT` | no | `8080` | Port to listen on (plain HTTP). |
 | `HOST` | no | `0.0.0.0` | Address to listen on. Inside Docker keep the default; elsewhere prefer `127.0.0.1`. |
-| `MULTIPLE_GMAIL_HOME` | no | `/data` | Data folder: encrypted Google client, account tokens, registered apps and issued tokens. |
+| `MULTIPLE_GMAIL_HOME` | outside Docker: yes | `/data` | Required when you do not use Docker (the default `/data` is the container volume). Data folder: encrypted Google client, account tokens, registered apps and issued tokens. |
 | `TRUST_PROXY` | no | off | Set to `1` only behind a reverse proxy. The rightmost `X-Forwarded-For` entry is then used as the client address for rate limiting. Without a proxy, leave it off, or clients could spoof their address. |
 | `MULTIPLE_GMAIL_ALLOW_INSECURE` | no | off | Development only: allows `PUBLIC_URL=http://localhost`. Never set it on a server. |
 
