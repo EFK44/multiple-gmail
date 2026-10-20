@@ -2,7 +2,7 @@
 
 All your Gmail accounts, in your AI apps.
 
-multiple-gmail is a small Windows program that lets AI apps such as Claude, Gemini CLI, Cursor or VS Code work with
+multiple-gmail is a small program for Windows, macOS and Linux that lets AI apps such as Claude, Gemini CLI, Cursor or VS Code work with
 several Gmail accounts at once (personal Gmail and Google Workspace). It runs on your own computer, asks Google for
 access with your own Google Cloud project, and stores everything encrypted on your disk. Nothing goes to any server
 of mine.
@@ -14,7 +14,7 @@ Project pages: [home](https://efk44.github.io/multiple-gmail/) and
 
 ## What it does
 
-You double-click `multiple-gmail.exe`. A setup wizard opens in your browser and walks you through the one-time Google
+You start `multiple-gmail` (on Windows, double-click `multiple-gmail.exe`). A setup wizard opens as a tab in your default browser and walks you through the one-time Google
 setup and connecting your accounts. After that, any AI app that speaks MCP (Model Context Protocol) can use all your
 connected accounts. Every tool takes an `account` argument, and searching can run on `"all"` accounts at once.
 
@@ -44,13 +44,68 @@ The tools follow the same names and parameters as Claude's official Gmail connec
   labeling. Google also requires it for changing labels on a thread. The permission to delete mail permanently
   (`https://mail.google.com/`) is never requested.
 - **Everything stays local.** The local server listens on `127.0.0.1` only, requires a secret key, and checks the
-  `Host` and `Origin` headers. Tokens and your OAuth client are encrypted with AES-256-GCM. On Windows the encryption
-  key is protected by DPAPI for your user account.
+  `Host` and `Origin` headers. Tokens and your OAuth client are encrypted with AES-256-GCM. The encryption key is
+  protected by DPAPI for your user account on Windows, kept in your login Keychain on macOS, and kept in the Secret
+  Service keyring (GNOME Keyring, KWallet) on Linux when `secret-tool` is installed. Without `secret-tool` it is a file
+  in the data folder that only your user can read, and multiple-gmail prints a warning once.
 - **Removing an account** is possible only in the wizard or on the command line. An AI cannot disconnect accounts.
 
 ## Install
 
-There are no prebuilt downloads yet, so build from source. You need Node.js 24 and npm.
+Download the file for your system from [Releases](https://github.com/EFK44/multiple-gmail/releases). Each file is a
+single program with everything inside; there is nothing else to install. `SHA256SUMS.txt` on the same page lets you
+check the download. Files appear there from the first tagged version on; until then, build from source (below).
+
+| System | File |
+|---|---|
+| Windows (x64) | `multiple-gmail-windows-x64.exe` |
+| macOS, Apple Silicon (M1 and later) | `multiple-gmail-macos-arm64` |
+| macOS, Intel | `multiple-gmail-macos-x64` |
+| Linux (x64) | `multiple-gmail-linux-x64` |
+
+The Windows build is the one I use every day. The macOS and Linux builds are produced and tested automatically by
+GitHub Actions on every change, but I have not tried them by hand on a real Mac or Linux desktop yet. Please
+[open an issue](https://github.com/EFK44/multiple-gmail/issues) if something does not work.
+
+Starting the program a second time does not start another server: it opens the wizard of the running one.
+
+### Windows
+
+1. Download `multiple-gmail-windows-x64.exe`, rename it to `multiple-gmail.exe` if you like, and put it in a folder in
+   your user profile.
+2. Double-click it. The program is not code-signed, so Windows SmartScreen may say "Windows protected your PC". Click
+   **More info**, then **Run anyway**.
+
+A console window shows its status. Closing that window stops the server.
+
+### macOS
+
+1. Download `multiple-gmail-macos-arm64` (Apple Silicon) or `multiple-gmail-macos-x64` (Intel). Move it to a folder
+   of your choice, for example `~/Applications`, and rename it to `multiple-gmail` if you like.
+2. Make it executable in Terminal: `chmod +x ~/Applications/multiple-gmail`
+3. The program is not notarized by Apple, so the first start is blocked by Gatekeeper. Either right-click it in Finder,
+   choose **Open**, then **Open** again; or remove the download mark once in Terminal:
+   `xattr -d com.apple.quarantine ~/Applications/multiple-gmail`
+4. Start it from Terminal (`~/Applications/multiple-gmail`). The wizard opens in your default browser.
+
+On first use the encryption key is stored in your login Keychain as `multiple-gmail-master-key`. If macOS asks
+whether `security` may use that Keychain item, choose **Always Allow**; choosing Deny stops multiple-gmail from
+reading your saved accounts (it never makes a new key in that case).
+
+### Linux
+
+1. Download `multiple-gmail-linux-x64`, put it for example in `~/.local/bin/multiple-gmail`.
+2. Make it executable: `chmod +x ~/.local/bin/multiple-gmail`
+3. Run it: `~/.local/bin/multiple-gmail`. The wizard opens in your default browser through `xdg-open`.
+
+Optional: install `secret-tool` (Debian and Ubuntu: `sudo apt install libsecret-tools`, Fedora: `libsecret`) before
+the first start, so the encryption key goes into your desktop keyring instead of a file. If `secret-tool` is
+installed but the keyring is locked or not running (for example over SSH), multiple-gmail stops with a message
+instead of making a second key. You can also set `MULTIPLE_GMAIL_MASTER_KEY` yourself (see DEPLOY.md, `gen-key`).
+
+### Build from source
+
+You need Node.js 24 and npm.
 
 ```sh
 npm ci
@@ -58,14 +113,8 @@ npm test
 npm run build:exe
 ```
 
-The result is `build/multiple-gmail.exe`. Copy it anywhere, for example a folder in your user profile, and
-double-click it.
-
-The exe is not code-signed. Windows SmartScreen may say "Windows protected your PC". Click **More info**, then
-**Run anyway**. You built it yourself, so this is expected.
-
-When you run it, a console window shows its status. Closing that window stops the server. Starting the exe a second
-time does not start another server: it opens the wizard of the running one.
+The result is `build/multiple-gmail.exe` on Windows and `build/multiple-gmail` on macOS and Linux. You built it
+yourself, so the SmartScreen or Gatekeeper warnings above are expected.
 
 ## Google Cloud setup (once)
 
@@ -127,7 +176,8 @@ The last wizard step does most of this with a button. By hand:
   `claude_desktop_config.json` first and adds the server without touching your other settings. Restart Claude Desktop
   afterwards.
 - **Claude Code:** run the command the wizard shows, which has this form:
-  `claude mcp add --scope user multiple-gmail -- "C:\path\to\multiple-gmail.exe" --stdio`
+  `claude mcp add --scope user multiple-gmail -- "C:\path\to\multiple-gmail.exe" --stdio` (on macOS and Linux, the
+  path of the `multiple-gmail` program instead). The wizard can also run it for you.
 - **Gemini CLI:** the wizard can add the server to `~/.gemini/settings.json` (with a backup), or add a `multiple-gmail`
   entry under `mcpServers` with the command `multiple-gmail.exe` and the argument `--stdio`.
 - **Other apps (Cursor, VS Code, LM Studio, and so on):** use the HTTP address `http://127.0.0.1:47110/mcp` and the
@@ -152,26 +202,38 @@ The last wizard step does most of this with a button. By hand:
   that `claude_desktop_config.json` contains `multiple-gmail`. The wizard keeps timestamped backups next to that
   file, so you can restore one if something looks wrong. The Microsoft Store version of Claude Desktop (3.x) keeps its
   config in `%LOCALAPPDATA%\Claude-Data\claude_<id>\claude_desktop_config.json`; the installer version uses
-  `%APPDATA%\Claude\claude_desktop_config.json`. The wizard writes to whichever of these exist.
+  `%APPDATA%\Claude\claude_desktop_config.json`. The wizard writes to whichever of these exist. On macOS the file is
+  `~/Library/Application Support/Claude/claude_desktop_config.json` (quit with Cmd+Q). On Linux the wizard offers
+  this only when `~/.config/Claude` exists.
 - **SmartScreen blocks the exe.** More info, then Run anyway (see Install).
 
 ## Where your data lives, and how to uninstall
 
-Everything is in `%LOCALAPPDATA%\multiple-gmail` (on other systems `~/.multiple-gmail`; set `MULTIPLE_GMAIL_HOME` to
-change it). It holds `config.json` (no secrets), your encrypted OAuth client and tokens, and the protected key.
+| System | Data folder |
+|---|---|
+| Windows | `%LOCALAPPDATA%\multiple-gmail` |
+| macOS | `~/Library/Application Support/multiple-gmail` |
+| Linux | `$XDG_DATA_HOME/multiple-gmail`, usually `~/.local/share/multiple-gmail` |
+
+Set `MULTIPLE_GMAIL_HOME` to use another folder. It holds `config.json` (no secrets) and your encrypted OAuth client
+and tokens. On Windows it also holds the DPAPI-protected key; on Linux without `secret-tool` it holds `master.key`.
+On macOS the key is the Keychain item `multiple-gmail-master-key` (remove it in Keychain Access to uninstall); with
+`secret-tool` on Linux it is the keyring entry labeled `multiple-gmail`.
 
 To remove everything:
 
 1. Remove each account in the wizard (or `accounts remove <name>`). This also asks Google to revoke the token.
 2. Delete the data folder.
 3. Check https://myaccount.google.com/permissions and remove your app if it is still listed.
-4. Delete the exe. If you turned on "Start with Windows", turn it off first in the wizard.
+4. Delete the program. If you turned on "Start with Windows" ("Start at login" on macOS and Linux), turn it off first
+   in the wizard. It adds `~/Library/LaunchAgents/io.github.efk44.multiple-gmail.plist` on macOS and
+   `~/.config/autostart/multiple-gmail.desktop` on Linux, and takes effect at your next login.
 5. Optionally delete the Google Cloud project.
 
 ## Server mode
 
 For web AI apps, multiple-gmail can run on your own server behind HTTPS with OAuth 2.1 and an admin password. This is
-optional and separate from the Windows exe. See [DEPLOY.md](DEPLOY.md).
+optional and separate from the desktop program. See [DEPLOY.md](DEPLOY.md).
 
 ## Development
 
