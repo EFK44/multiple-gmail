@@ -63,8 +63,8 @@ check the download. Files appear there from the first tagged version on; until t
 | macOS, Intel | `multiple-gmail-macos-x64` |
 | Linux (x64) | `multiple-gmail-linux-x64` |
 
-The Windows build is the one I use every day. The macOS and Linux builds are produced and tested automatically by
-GitHub Actions on every change, but I have not tried them by hand on a real Mac or Linux desktop yet. Please
+The Windows build is the one I use every day. The macOS and Linux builds are built and unit-tested by CI; they are
+not hand-tested on macOS or Linux yet. Please
 [open an issue](https://github.com/EFK44/multiple-gmail/issues) if something does not work.
 
 Starting the program a second time does not start another server: it opens the wizard of the running one.
@@ -90,7 +90,9 @@ A console window shows its status. Closing that window stops the server.
 
 On first use the encryption key is stored in your login Keychain as `multiple-gmail-master-key`. If macOS asks
 whether `security` may use that Keychain item, choose **Always Allow**; choosing Deny stops multiple-gmail from
-reading your saved accounts (it never makes a new key in that case).
+reading your saved accounts (it never makes a new key in that case). If your login Keychain is locked, the first
+start can wait for a Keychain unlock prompt, which may be behind other windows: unlock the Keychain (Keychain Access,
+or log in again), or set `MULTIPLE_GMAIL_MASTER_KEY` to skip the Keychain entirely.
 
 ### Linux
 

@@ -132,7 +132,18 @@ const SECRET_ATTRS = ['service', 'multiple-gmail', 'key', 'master'];
 const PLAIN_KEY_FILE = 'master.key';
 const SECURITY_NOT_FOUND = 44; // errSecItemNotFound
 
-export type KeyRunResult = { code: number; stdout: string; stderr: string };
+// `stderr` is always the raw child stderr. `failure` is set when the process did not run to a normal exit:
+// 'spawn' (could not start, output too large) or 'timeout' (killed by the timeout or a signal); `detail` explains it.
+export type KeyRunResult = {
+  code: number;
+  stdout: string;
+  stderr: string;
+  failure?: 'spawn' | 'timeout';
+  detail?: string;
+};
+const RUN_TIMEOUT_MS = 30_000;
+// The lock holder makes at most three runner calls (lookup, store, lookup), each bounded by RUN_TIMEOUT_MS.
+const LOCK_STALE_MS = 3 * RUN_TIMEOUT_MS + 30_000;
 // Runs an absolute-path binary without a shell; `input` goes to stdin.
 export type KeyRunner = (file: string, args: string[], input?: string) => Promise<KeyRunResult>;
 
@@ -150,16 +161,31 @@ export type PosixKeyDeps = {
 
 let warnedPlainFile = false;
 
+type ExecErrorShape = { code?: unknown; killed?: boolean; signal?: unknown; message?: string } | null | undefined;
+
+// Maps execFile's callback arguments to a KeyRunResult. A normal non-zero exit has a numeric err.code and keeps the
+// raw (possibly empty) stderr, so "exit 1, no output" stays distinguishable from a real failure.
+export function toKeyRunResult(err: ExecErrorShape, stdout: unknown, stderr: unknown): KeyRunResult {
+  const out = String(stdout ?? '');
+  const errText = String(stderr ?? '');
+  if (!err) return { code: 0, stdout: out, stderr: errText };
+  if (err.killed || (typeof err.signal === 'string' && err.signal)) {
+    return { code: -1, stdout: out, stderr: errText, failure: 'timeout', detail: `timed out or killed (${String(err.signal ?? 'killed')})` };
+  }
+  if (typeof err.code === 'number') return { code: err.code, stdout: out, stderr: errText };
+  return { code: -1, stdout: out, stderr: errText, failure: 'spawn', detail: err.message || String(err.code ?? 'spawn failed') };
+}
+
+const describeRun = (r: KeyRunResult) => r.detail ?? (r.stderr.trim() || `exit code ${r.code}`);
+
 export const realKeyRunner: KeyRunner = (file, args, input) => {
   if (process.env.VITEST && process.env.MULTIPLE_GMAIL_REAL_KEYSTORE_TEST !== '1') {
     return Promise.reject(new Error('Tests must not touch the real OS keystore; inject a runner.'));
   }
   return new Promise((resolve) => {
-    const child = execFile(file, args, { cwd: '/', timeout: 30_000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
-      const raw = err ? (err as { code?: unknown }).code : 0;
-      const code = typeof raw === 'number' ? raw : err ? 1 : 0;
-      resolve({ code, stdout: String(stdout), stderr: err && !stderr ? err.message : String(stderr) });
-    });
+    const child = execFile(file, args, { cwd: '/', timeout: RUN_TIMEOUT_MS, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) =>
+      resolve(toKeyRunResult(err, stdout, stderr)),
+    );
     child.stdin?.on('error', () => {});
     child.stdin?.end(input ?? '');
   });
@@ -193,11 +219,11 @@ export async function loadPosixMasterKey(partial: Partial<PosixKeyDeps> = {}): P
 async function keychainRead(d: PosixKeyDeps, security: string): Promise<Buffer | undefined> {
   const kc = d.keychain ? [d.keychain] : [];
   const r = await d.run(security, ['find-generic-password', '-a', KEYCHAIN_ACCOUNT, '-s', KEYCHAIN_SERVICE, '-w', ...kc]);
-  if (r.code === SECURITY_NOT_FOUND) return undefined;
-  if (r.code !== 0) {
+  if (!r.failure && r.code === SECURITY_NOT_FOUND) return undefined;
+  if (r.failure || r.code !== 0) {
     throw new Error(
-      `Could not read the multiple-gmail master key from the macOS Keychain (security exited with ${r.code}): ` +
-        `${r.stderr.trim() || 'no details'}. Allow access when macOS asks, or set MULTIPLE_GMAIL_MASTER_KEY.`,
+      `Could not read the multiple-gmail master key from the macOS Keychain: ${describeRun(r)}. ` +
+        'Unlock the Keychain and allow access when macOS asks, or set MULTIPLE_GMAIL_MASTER_KEY.',
     );
   }
   return parseStoredKey(r.stdout, 'the macOS Keychain item multiple-gmail-master-key');
@@ -245,15 +271,18 @@ class KeyringUnavailable extends Error {}
 
 async function secretToolLookup(d: PosixKeyDeps, tool: string): Promise<Buffer | undefined> {
   const r = await d.run(tool, ['lookup', ...SECRET_ATTRS]);
+  if (r.failure) throw new KeyringUnavailable(describeRun(r));
   if (r.code === 0 && r.stdout.trim()) return parseStoredKey(r.stdout, 'the Secret Service item multiple-gmail');
   // Not found: exit 1 (or 0 with no output) and nothing on stderr. Anything on stderr means the keyring itself failed.
-  if (r.stderr.trim()) throw new KeyringUnavailable(r.stderr.trim());
+  if (r.stderr.trim() || (r.code !== 0 && r.code !== 1)) throw new KeyringUnavailable(describeRun(r));
   return undefined;
 }
 
 // Serializes first-time creation across processes with an O_EXCL lock file in the data folder.
 async function withLock<T>(lock: string, fn: () => Promise<T>): Promise<T> {
-  for (let i = 0; ; i++) {
+  // A lock older than the holder's worst case is stale (crashed holder); waiters wait at least that long.
+  const deadline = Date.now() + LOCK_STALE_MS + 10_000;
+  for (;;) {
     try {
       await (await open(lock, 'wx', 0o600)).close();
       break;
@@ -263,9 +292,9 @@ async function withLock<T>(lock: string, fn: () => Promise<T>): Promise<T> {
         (s) => Date.now() - s.mtimeMs,
         () => 0,
       );
-      if (age > 30_000) await rm(lock, { force: true });
-      else if (i > 400) throw new Error(`Timed out waiting for ${lock}.`);
-      else await new Promise((r) => setTimeout(r, 25));
+      if (age > LOCK_STALE_MS) await rm(lock, { force: true });
+      else if (Date.now() > deadline) throw new Error(`Timed out waiting for ${lock}.`);
+      else await new Promise((r) => setTimeout(r, 50));
     }
   }
   try {
@@ -292,7 +321,7 @@ async function linuxMasterKey(d: PosixKeyDeps): Promise<Buffer> {
         const b64 = randomBytes(KEY_LEN).toString('base64');
         // The value goes over stdin only.
         const r = await d.run(tool, ['store', '--label=multiple-gmail', ...SECRET_ATTRS], b64);
-        if (r.code !== 0) throw new KeyringUnavailable(r.stderr.trim() || `secret-tool store exited with ${r.code}`);
+        if (r.failure || r.code !== 0) throw new KeyringUnavailable(`secret-tool store failed: ${describeRun(r)}`);
         const stored = await secretToolLookup(d, tool);
         if (!stored) throw new KeyringUnavailable('the stored key could not be read back');
         return stored;

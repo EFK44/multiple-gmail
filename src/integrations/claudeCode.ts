@@ -66,15 +66,28 @@ export function runClaudeAdd(claudePath: string, spec: LaunchSpec): Promise<RunR
   return run(plan.file, plan.args, plan.verbatim);
 }
 
-// macOS and Linux: the first absolute PATH entry holding an executable file named `claude`. Relative entries (".", "")
-// are skipped so the current directory can never supply the binary. No shell is involved.
-export function findClaudeOnPath(pathEnv: string | undefined, isExec: IsExecutable = isExecutableFile): string | null {
+// Usual install locations, checked after PATH: an app started from Finder, launchd or a desktop autostart often has a
+// minimal PATH without them. Native installer, Homebrew on Apple Silicon, Homebrew on Intel and npm -g defaults.
+export function claudeFallbackCandidates(home: string): string[] {
+  return [posix.join(home, '.local', 'bin', 'claude'), '/opt/homebrew/bin/claude', '/usr/local/bin/claude'];
+}
+
+// macOS and Linux: the first absolute PATH entry holding an executable file named `claude`, then the fixed
+// candidates above. Relative entries (".", "") are skipped so the current directory can never supply the binary.
+// No shell is involved.
+export function findClaudeOnPath(
+  pathEnv: string | undefined,
+  isExec: IsExecutable = isExecutableFile,
+  home: string = homedir(),
+): string | null {
   for (const dir of (pathEnv ?? '').split(':')) {
     if (!dir || !posix.isAbsolute(dir)) continue;
     const candidate = posix.join(dir, 'claude');
     if (isExec(candidate)) return candidate;
   }
-  return null;
+  // The ~/.local/bin candidate is used only with an absolute home.
+  const fallbacks = claudeFallbackCandidates(home).slice(posix.isAbsolute(home) ? 0 : 1);
+  return fallbacks.find((p) => isExec(p)) ?? null;
 }
 
 // Windows: first .exe or .cmd that `where claude` reports (extensionless npm shims are shell scripts we cannot run).

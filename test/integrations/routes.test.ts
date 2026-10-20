@@ -113,6 +113,19 @@ describe('integrations routes', () => {
     expect(((await a('GET', '/integrations', ''))!.json as any).claudeDesktop).toEqual({ supported: false });
   });
 
+  it('Windows keeps supported:true with configPath null when no Claude Desktop location is known', async () => {
+    delete process.env.APPDATA;
+    delete process.env.LOCALAPPDATA;
+    const a = api();
+    expect(((await a('GET', '/integrations', ''))!.json as any).claudeDesktop).toEqual({
+      supported: true,
+      configPath: null,
+      configPaths: [],
+      configured: false,
+    });
+    expect((await a('POST', '/integrations/claude-desktop', ''))!.status).toBe(409);
+  });
+
   describe('macOS and Linux', () => {
     let prevHome: string | undefined;
     beforeEach(() => {

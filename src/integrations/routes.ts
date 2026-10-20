@@ -46,6 +46,7 @@ export function createIntegrationsApi(partial: Partial<IntegrationsDeps> = {}) {
   };
   const supported = SUPPORTED.includes(deps.platform);
   const platform = deps.platform;
+  const claudeDesktopAvailable = (targets: string[]) => platform === 'win32' || (supported && targets.length > 0);
 
   async function guarded(fn: () => Promise<ApiResponse>): Promise<ApiResponse> {
     try {
@@ -64,9 +65,10 @@ export function createIntegrationsApi(partial: Partial<IntegrationsDeps> = {}) {
         const port = await deps.port();
         const targets = supported ? claudeDesktopTargets(platform) : [];
         return ok({
-          // Linux has targets only when ~/.config/Claude exists.
+          // Windows always reports supported (as before; configPath may be null). Linux has targets only when
+          // ~/.config/Claude exists.
           claudeDesktop:
-            targets.length > 0
+            claudeDesktopAvailable(targets)
               ? { supported: true, configPath: targets[0] ?? null, configPaths: targets, configured: await isClaudeDesktopConfigured(platform) }
               : { supported: false },
           geminiCli: { configPath: geminiSettingsPath(), configured: await isGeminiConfigured() },
@@ -81,7 +83,7 @@ export function createIntegrationsApi(partial: Partial<IntegrationsDeps> = {}) {
     }
 
     if (path === '/integrations/claude-desktop' && method === 'POST') {
-      if (!supported || claudeDesktopTargets(platform).length === 0) return ok({ supported: false });
+      if (!supported || !claudeDesktopAvailable(claudeDesktopTargets(platform))) return ok({ supported: false });
       return guarded(async () =>
         ok({ ok: true, written: await addToClaudeDesktop(deps.launch(), platform), notice: NOTICES[platform] ?? CLAUDE_DESKTOP_NOTICE }),
       );

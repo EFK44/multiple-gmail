@@ -10,7 +10,9 @@ import {
   KEYCHAIN_ACCOUNT,
   KEYCHAIN_SERVICE,
   loadPosixMasterKey,
+  realKeyRunner,
   resetPosixWarningForTests,
+  toKeyRunResult,
   type KeyRunner,
   type PosixKeyDeps,
 } from '../../src/core/masterKey.js';
@@ -184,6 +186,65 @@ describe('master key on POSIX', () => {
       await expect(loadPosixMasterKey(deps({ run, isExec }))).rejects.toThrow(/keyring.*MULTIPLE_GMAIL_MASTER_KEY/s);
       expect(existsSync(join(dir, 'master.key'))).toBe(false);
     });
+
+    it('treats a timed-out or unstartable secret-tool as an unavailable keyring', async () => {
+      for (const failure of ['timeout', 'spawn'] as const) {
+        const run: KeyRunner = async () => ({ code: -1, stdout: '', stderr: '', failure, detail: 'x' });
+        await expect(loadPosixMasterKey(deps({ run, isExec }))).rejects.toThrow(/keyring/);
+      }
+    });
+
+    it('creates a key when lookup reports not found as the real runner does (exit 1, empty stderr)', async () => {
+      const state: { value?: string } = {};
+      const run: KeyRunner = async (_f, args, input) => {
+        if (args[0] === 'lookup') {
+          return state.value === undefined
+            ? toKeyRunResult({ code: 1, killed: false, signal: null, message: 'Command failed: secret-tool lookup' }, '', '')
+            : toKeyRunResult(null, state.value, '');
+        }
+        state.value = input;
+        return toKeyRunResult(null, '', '');
+      };
+      const key = await loadPosixMasterKey(deps({ run, isExec }));
+      expect(state.value).toBe(key.toString('base64'));
+    });
+  });
+
+  describe('toKeyRunResult (execFile callback shapes)', () => {
+    it('keeps a normal non-zero exit with raw, empty stderr', () => {
+      expect(toKeyRunResult({ code: 1, killed: false, signal: null, message: 'Command failed: x' }, '', '')).toEqual({
+        code: 1,
+        stdout: '',
+        stderr: '',
+      });
+      expect(toKeyRunResult(null, 'out\n', '')).toEqual({ code: 0, stdout: 'out\n', stderr: '' });
+    });
+    it('marks a timeout or signal kill', () => {
+      const r = toKeyRunResult({ code: null, killed: true, signal: 'SIGTERM', message: 'Command failed' }, '', '');
+      expect(r.failure).toBe('timeout');
+      expect(toKeyRunResult({ code: null, killed: false, signal: 'SIGKILL' }, '', '').failure).toBe('timeout');
+    });
+    it('marks a spawn error or output overflow', () => {
+      const r = toKeyRunResult({ code: 'ENOENT', message: 'spawn /usr/bin/secret-tool ENOENT' }, '', '');
+      expect(r).toMatchObject({ failure: 'spawn', detail: 'spawn /usr/bin/secret-tool ENOENT' });
+      expect(toKeyRunResult({ code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER', message: 'maxBuffer' }, '', '').failure).toBe('spawn');
+    });
+  });
+
+  describe.skipIf(process.platform === 'win32')('realKeyRunner on POSIX', () => {
+    beforeEach(() => {
+      process.env.MULTIPLE_GMAIL_REAL_KEYSTORE_TEST = '1';
+    });
+    afterEach(() => {
+      delete process.env.MULTIPLE_GMAIL_REAL_KEYSTORE_TEST;
+    });
+    it('reports exit 1 with empty stderr and no failure', async () => {
+      expect(await realKeyRunner('/bin/sh', ['-c', 'exit 1'])).toEqual({ code: 1, stdout: '', stderr: '' });
+    });
+    it('passes stdin and reports a spawn failure for a missing binary', async () => {
+      expect((await realKeyRunner('/bin/sh', ['-c', 'cat'], 'abc')).stdout).toBe('abc');
+      expect((await realKeyRunner('/nonexistent/mg-tool', [])).failure).toBe('spawn');
+    });
   });
 
   describe('Linux file fallback', () => {
@@ -233,7 +294,6 @@ describe.runIf(process.platform === 'darwin' && process.env.CI === 'true')('macO
     }
     process.env.MULTIPLE_GMAIL_REAL_KEYSTORE_TEST = '1';
     try {
-      const { realKeyRunner } = await import('../../src/core/masterKey.js');
       const d = { dir, keychain, run: realKeyRunner, platform: 'darwin' as const, env: {} };
       const a = await loadPosixMasterKey(d);
       const b = await loadPosixMasterKey(d);
@@ -242,6 +302,28 @@ describe.runIf(process.platform === 'darwin' && process.env.CI === 'true')('macO
     } finally {
       delete process.env.MULTIPLE_GMAIL_REAL_KEYSTORE_TEST;
       await run('/usr/bin/security', ['delete-keychain', keychain]).catch(() => {});
+    }
+  }, 60_000);
+});
+
+// Real Secret Service round trip, CI only: the workflow runs this inside dbus-run-session with a freshly unlocked
+// throwaway gnome-keyring (MG_SECRET_TOOL_IT=1), so no real user keyring is involved.
+describe.runIf(process.platform === 'linux' && process.env.MG_SECRET_TOOL_IT === '1')('Linux secret-tool integration', () => {
+  const clear = () =>
+    promisify(execFile)('/usr/bin/secret-tool', ['clear', 'service', 'multiple-gmail', 'key', 'master']).catch(() => {});
+  it('creates the key on first use (lookup not found) and reads the same key back', async () => {
+    process.env.MULTIPLE_GMAIL_REAL_KEYSTORE_TEST = '1';
+    await clear();
+    try {
+      const d = { dir, run: realKeyRunner, platform: 'linux' as const, env: {} };
+      const a = await loadPosixMasterKey(d);
+      const b = await loadPosixMasterKey(d);
+      expect(a.length).toBe(32);
+      expect(b.equals(a)).toBe(true);
+      expect(existsSync(join(dir, 'master.key'))).toBe(false);
+    } finally {
+      delete process.env.MULTIPLE_GMAIL_REAL_KEYSTORE_TEST;
+      await clear();
     }
   }, 60_000);
 });

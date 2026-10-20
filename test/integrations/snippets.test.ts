@@ -98,7 +98,19 @@ describe('findClaudeOnPath', () => {
     const exec = new Set(['/home/x/.local/bin/claude', '/usr/local/bin/claude', 'bin/claude']);
     const isExec = (p: string) => exec.has(p);
     expect(findClaudeOnPath('.:bin::/usr/bin:/home/x/.local/bin:/usr/local/bin', isExec)).toBe('/home/x/.local/bin/claude');
-    expect(findClaudeOnPath('/usr/bin', isExec)).toBeNull();
-    expect(findClaudeOnPath(undefined, isExec)).toBeNull();
+    expect(findClaudeOnPath('/usr/bin', () => false, '/home/x')).toBeNull();
+    expect(findClaudeOnPath(undefined, () => false, '/home/x')).toBeNull();
+  });
+
+  it('falls back to ~/.local/bin, /opt/homebrew/bin and /usr/local/bin, in that order', () => {
+    const only = (...paths: string[]) => (p: string) => paths.includes(p);
+    expect(findClaudeOnPath('/usr/bin', only('/home/x/.local/bin/claude', '/usr/local/bin/claude'), '/home/x')).toBe(
+      '/home/x/.local/bin/claude',
+    );
+    expect(findClaudeOnPath('', only('/opt/homebrew/bin/claude', '/usr/local/bin/claude'), '/Users/x')).toBe('/opt/homebrew/bin/claude');
+    expect(findClaudeOnPath('', only('/usr/local/bin/claude'), '/Users/x')).toBe('/usr/local/bin/claude');
+    expect(findClaudeOnPath('/a', only('/a/claude', '/usr/local/bin/claude'), '/Users/x')).toBe('/a/claude');
+    // A relative home is never used.
+    expect(findClaudeOnPath('', only('rel/.local/bin/claude'), 'rel')).toBeNull();
   });
 });
