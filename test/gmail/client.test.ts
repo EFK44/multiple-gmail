@@ -26,7 +26,7 @@ afterEach(async () => {
   setGmailFactoryForTests(null);
   clearGmailCache();
   resetMasterKeyCacheForTests();
-  delete process.env.MULTIPLE_GMAIL_HOME;
+  process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME;
   if (setKey) {
     delete process.env.MULTIPLE_GMAIL_MASTER_KEY;
     setKey = false;

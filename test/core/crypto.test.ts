@@ -20,7 +20,7 @@ beforeEach(async () => {
   process.env.MULTIPLE_GMAIL_HOME = home;
 });
 afterEach(async () => {
-  delete process.env.MULTIPLE_GMAIL_HOME;
+  process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME;
   await rm(root, { recursive: true, force: true });
 });
 

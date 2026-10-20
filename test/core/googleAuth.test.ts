@@ -29,7 +29,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   resetMasterKeyCacheForTests();
-  delete process.env.MULTIPLE_GMAIL_HOME;
+  process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME;
   if (setMasterKey) {
     delete process.env.MULTIPLE_GMAIL_MASTER_KEY;
     setMasterKey = false;
@@ -131,6 +131,7 @@ describe('startLoopbackAuth', () => {
   it('binds a 127.0.0.1 loopback redirect on /callback', async () => {
     const { deps: d } = deps({ timeoutMs: 200 });
     const { url, done } = await startLoopbackAuth('alpha', { deps: d });
+    done.catch(() => {});
     const redirect = new URL(new URL(url).searchParams.get('redirect_uri')!);
     expect(redirect.hostname).toBe('127.0.0.1');
     expect(redirect.pathname).toBe('/callback');

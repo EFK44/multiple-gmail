@@ -13,7 +13,7 @@ beforeEach(async () => {
   process.env.MULTIPLE_GMAIL_HOME = dir;
 });
 afterEach(async () => {
-  if (prev === undefined) delete process.env.MULTIPLE_GMAIL_HOME;
+  if (prev === undefined) process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME;
   else process.env.MULTIPLE_GMAIL_HOME = prev;
   await rm(dir, { recursive: true, force: true });
 });

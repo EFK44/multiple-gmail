@@ -12,7 +12,7 @@ beforeEach(async () => {
   process.env.MULTIPLE_GMAIL_HOME = home;
 });
 afterEach(async () => {
-  delete process.env.MULTIPLE_GMAIL_HOME;
+  process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME;
   await rm(home, { recursive: true, force: true });
 });
 
@@ -72,5 +72,17 @@ describe('writeFileAtomic', () => {
     await writeFileAtomic(f, 'hi');
     await writeFileAtomic(f, 'there');
     expect(await readdir(home)).toEqual(['a.txt']);
+  });
+});
+
+describe('dataDir guard', () => {
+  it('throws under vitest when MULTIPLE_GMAIL_HOME is unset instead of using the real profile', () => {
+    const saved = process.env.MULTIPLE_GMAIL_HOME;
+    delete process.env.MULTIPLE_GMAIL_HOME;
+    try {
+      expect(() => dataDir()).toThrow('Tests must set MULTIPLE_GMAIL_HOME');
+    } finally {
+      process.env.MULTIPLE_GMAIL_HOME = saved;
+    }
   });
 });

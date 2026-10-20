@@ -128,7 +128,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await client.close();
-  delete process.env.MULTIPLE_GMAIL_HOME;
+  process.env.MULTIPLE_GMAIL_HOME = process.env.MULTIPLE_GMAIL_TEST_HOME;
   await rm(root, { recursive: true, force: true });
 });
 
