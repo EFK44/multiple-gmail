@@ -53,13 +53,13 @@ export function parseClientJson(text: string): OAuthClient {
   return { clientId, clientSecret, kind, redirectUris };
 }
 
-async function writeSealed(file: string, value: Buffer, opts: WriteAtomicOptions = {}): Promise<void> {
+export async function writeSealed(file: string, value: Buffer, opts: WriteAtomicOptions = {}): Promise<void> {
   await ensureSecureDir(dataDir());
   await ensureSecureDir(dirname(file));
   await writeFileAtomic(file, seal(await getMasterKey(), value), opts);
 }
 
-async function readSealed(file: string): Promise<Buffer | null> {
+export async function readSealed(file: string): Promise<Buffer | null> {
   let blob: Buffer;
   try {
     blob = await readFile(file);

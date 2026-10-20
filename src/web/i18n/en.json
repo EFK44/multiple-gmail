@@ -272,5 +272,19 @@
     "confirm": "Remove account",
     "done": "{alias} removed.",
     "notRevoked": "{alias} was removed from this computer, but Google could not be told. You can also remove access at myaccount.google.com/permissions."
+  },
+  "remote": {
+    "guideNote": "Server mode: for Application type choose Web application instead of Desktop app, and under Authorized redirect URIs add exactly this address:",
+    "uploadNote": "Server mode needs a Web application client whose authorized redirect URIs include this address:",
+    "aiTitle": "ChatGPT and claude.ai",
+    "aiLead": "This server is reachable from the internet. Web AI apps connect to it as a custom connector and sign in with your admin password.",
+    "aiDesc": "Give the app this connector address:",
+    "mcpUrlLabel": "Connector URL",
+    "claude": "claude.ai: open Settings, then Connectors, choose Add custom connector, paste the address, and click Connect. The sign-in page of this server opens; enter the admin password and choose Allow.",
+    "chatgpt": "ChatGPT: custom connectors need developer mode, and availability depends on your plan. Check the current OpenAI help pages, then add a connector with this address and OAuth sign-in.",
+    "password": "Only someone who knows the admin password can approve a connection. You can approve several apps.",
+    "signOutTitle": "Sign out",
+    "signOutDesc": "Ends this admin session in this browser. Connected AI apps keep working.",
+    "signOut": "Sign out"
   }
 }

@@ -151,6 +151,17 @@ async function api(method, path, body, rawBody = false) {
     throw new Error(t('errors.network'));
   }
   if (res.status === 401) {
+    // Server mode answers with the admin sign-in page to go to.
+    let lost = null;
+    try {
+      lost = await res.json();
+    } catch {
+      lost = null;
+    }
+    if (lost && typeof lost.login === 'string' && lost.login.startsWith('/') && !lost.login.startsWith('//')) {
+      location.assign(lost.login);
+      throw new SessionLost('session');
+    }
     S.sessionLost = true;
     stopAllPolls();
     render();
@@ -266,6 +277,9 @@ async function getApiKey() {
 
 // ---------- navigation ----------
 
+function isRemote() {
+  return S.state?.mode === 'remote';
+}
 function hasClient() {
   return Boolean(S.state?.hasClient);
 }
@@ -487,6 +501,7 @@ function googleScreen() {
             )
           : null,
         g.note ? h('p', { class: 'note note-warn' }, t('google.s5.note')) : null,
+        g.note && isRemote() ? remoteRedirectNote('remote.guideNote') : null,
         h(
           'div',
           { class: 'guide-actions' },
@@ -622,7 +637,7 @@ function uploadScreen() {
   const status = S.upload
     ? msg(S.upload.kind, msgText(S.upload))
     : st?.hasClient
-      ? st.clientKind === 'web'
+      ? st.clientKind === 'web' && !isRemote()
         ? msg('warn', t('upload.webWarning'))
         : msg('quiet', t('upload.already'))
       : null;
@@ -630,6 +645,7 @@ function uploadScreen() {
     'section',
     { class: 'screen' },
     header('upload.title', 'upload.lead'),
+    isRemote() ? remoteRedirectNote('remote.uploadNote') : null,
     zone,
     h('div', { class: 'status-slot' }, status),
     h('p', { class: 'note note-warn' }, t('upload.secret')),
@@ -1088,7 +1104,52 @@ function httpCard(info) {
   );
 }
 
+// Server mode: the redirect URI Google must know, with a copy button.
+function remoteRedirectNote(key) {
+  const uri = S.state?.googleRedirectUri ?? '';
+  return h(
+    'div',
+    { class: 'note note-warn' },
+    h('p', {}, t(key)),
+    h('div', { class: 'codebox' }, h('code', {}, uri), copyButton(() => uri)),
+  );
+}
+
+// Server mode: web AI apps add this server as a custom connector; local integrations do not apply.
+function remoteAiScreen() {
+  const url = S.state?.mcpUrl ?? '';
+  return h(
+    'section',
+    { class: 'screen' },
+    header('ai.title', 'remote.aiLead'),
+    h(
+      'div',
+      { class: 'ai-list' },
+      card(
+        'remote',
+        'remote.aiTitle',
+        h('p', {}, t('remote.aiDesc')),
+        h('dl', { class: 'kv' }, h('dt', {}, t('remote.mcpUrlLabel')), h('dd', {}, h('code', {}, url), copyButton(() => url))),
+        h('p', {}, t('remote.claude')),
+        h('p', {}, t('remote.chatgpt')),
+        h('p', { class: 'note note-quiet' }, t('remote.password')),
+      ),
+    ),
+    h('div', { class: 'actions' }, h('button', { type: 'button', class: 'btn btn-primary', onclick: () => go('dashboard') }, t('ai.next'))),
+  );
+}
+
+async function signOut() {
+  try {
+    await fetch('/admin/logout', { method: 'POST', credentials: 'same-origin' });
+  } catch {
+    // The sign-in page is shown either way.
+  }
+  location.assign('/admin/login');
+}
+
 function aiScreen() {
+  if (isRemote()) return remoteAiScreen();
   const info = S.integrations;
   if (!info) loadIntegrations();
   const body = !info
@@ -1209,7 +1270,8 @@ async function setAutostartNow(enabled) {
 }
 
 function dashboardScreen() {
-  if (S.autostart === null) {
+  const remote = isRemote();
+  if (!remote && S.autostart === null) {
     S.autostart = { loading: true };
     loadAutostart();
   }
@@ -1307,7 +1369,16 @@ function dashboardScreen() {
       h('p', {}, t('dashboard.aiDesc')),
       h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-secondary', id: 'dash-ai-go', onclick: () => go('ai') }, t('dashboard.ai'))),
     ),
-    h(
+    remote
+      ? h(
+          'section',
+          { class: 'panel', 'aria-labelledby': 'dash-signout' },
+          h('h2', { id: 'dash-signout' }, t('remote.signOutTitle')),
+          h('p', {}, t('remote.signOutDesc')),
+          h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-secondary', id: 'sign-out', onclick: () => signOut() }, t('remote.signOut'))),
+        )
+      : null,
+    remote ? null : h(
       'section',
       { class: 'panel', 'aria-labelledby': 'dash-key' },
       h('h2', { id: 'dash-key' }, t('dashboard.apikey')),
@@ -1348,7 +1419,7 @@ function dashboardScreen() {
         ),
       ),
     ),
-    h(
+    remote ? null : h(
       'section',
       { class: 'panel', 'aria-labelledby': 'dash-auto' },
       h('h2', { id: 'dash-auto' }, t('dashboard.autostart')),

@@ -16,6 +16,8 @@ export type ApiDeps = {
   startLoopbackAuth: typeof startLoopbackAuth;
   removeAccount: (alias: string) => Promise<{ revoked: boolean }>;
   integrations: Partial<IntegrationsDeps>;
+  // Remote mode (serve --remote): no local API key, integrations or autostart, and only Web application clients.
+  remote?: { mcpUrl: string; googleRedirectUri: string };
 };
 
 export type ApiRequest = {
@@ -71,8 +73,10 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
     startLoopbackAuth: partial.startLoopbackAuth ?? startLoopbackAuth,
     removeAccount: partial.removeAccount ?? ((alias) => removeAccount(alias)),
     integrations: partial.integrations ?? {},
+    remote: partial.remote,
   };
-  const integrations = createIntegrationsApi(deps.integrations);
+  const remote = deps.remote;
+  const integrations = remote ? null : createIntegrationsApi(deps.integrations);
   const flows = new Map<string, FlowState>();
   // Flows whose loopback listener is being started (between reservation and authUrl).
   const starting = new Map<string, Promise<string | null>>();
@@ -130,8 +134,10 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
   async function state(): Promise<ApiResponse> {
     const cfg = await loadConfig();
     const client = await loadClient().catch(() => null);
-    const key = await getLocalApiKey();
+    const key = remote ? null : await getLocalApiKey();
     return ok({
+      mode: remote ? 'remote' : 'local',
+      ...(remote ? { mcpUrl: remote.mcpUrl, googleRedirectUri: remote.googleRedirectUri } : {}),
       hasClient: client !== null,
       // The client ID is public (it appears in every sign-in URL); the wizard shows it for Workspace admin steps.
       // The client secret is never sent to the UI.
@@ -144,7 +150,7 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
         email: a.email,
         status: getAccountStatus(alias),
       })),
-      apiKeyMasked: maskKey(key),
+      ...(key !== null ? { apiKeyMasked: maskKey(key) } : {}),
     });
   }
 
@@ -160,6 +166,14 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
         client = parseClientJson(req.body);
       } catch (e) {
         return fail(400, (e as Error).message);
+      }
+      if (remote) {
+        if (client.kind !== 'web') {
+          return fail(400, 'Server mode needs a "Web application" OAuth client, not a Desktop app client.');
+        }
+        if (!client.redirectUris.includes(remote.googleRedirectUri)) {
+          return fail(400, `Add this authorized redirect URI to the OAuth client in Google Cloud, then download the JSON again: ${remote.googleRedirectUri}`);
+        }
       }
       await saveClient(client);
       return ok({ ok: true, kind: client.kind });
@@ -218,6 +232,10 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
       }
     }
 
+    if (remote && (path.startsWith('/apikey') || path === '/autostart' || path.startsWith('/integrations'))) {
+      return fail(404, 'Not found.');
+    }
+
     if (path === '/apikey' && method === 'GET') {
       if (!req.sameOrigin) return fail(403, 'Forbidden.');
       return ok({ apiKey: await getLocalApiKey() });
@@ -236,7 +254,7 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
       return ok({ ok: true, language });
     }
 
-    if (path === '/autostart' || path.startsWith('/integrations')) {
+    if (integrations && (path === '/autostart' || path.startsWith('/integrations'))) {
       const res = await integrations(method, path, req.body);
       if (res) return res;
     }

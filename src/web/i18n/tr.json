@@ -272,5 +272,19 @@
     "confirm": "Hesabı kaldır",
     "done": "{alias} kaldırıldı.",
     "notRevoked": "{alias} bu bilgisayardan kaldırıldı ama Google'a haber verilemedi. Erişimi myaccount.google.com/permissions adresinden de kaldırabilirsin."
+  },
+  "remote": {
+    "guideNote": "Sunucu modu: Uygulama türü olarak Masaüstü uygulaması yerine Web uygulaması seç ve Yetkili yönlendirme URI'leri altına tam olarak şu adresi ekle:",
+    "uploadNote": "Sunucu modu, yetkili yönlendirme URI'leri arasında şu adres bulunan bir Web uygulaması client'ı ister:",
+    "aiTitle": "ChatGPT ve claude.ai",
+    "aiLead": "Bu sunucuya internetten ulaşılabilir. Web yapay zeka uygulamaları ona özel bağlayıcı olarak bağlanır ve admin şifrenle giriş yapar.",
+    "aiDesc": "Uygulamaya şu bağlayıcı adresini ver:",
+    "mcpUrlLabel": "Bağlayıcı adresi",
+    "claude": "claude.ai: Ayarlar, ardından Bağlayıcılar bölümünü aç, Özel bağlayıcı ekle seç, adresi yapıştır ve Bağlan'a tıkla. Bu sunucunun giriş sayfası açılır; admin şifresini gir ve İzin ver'i seç.",
+    "chatgpt": "ChatGPT: özel bağlayıcılar geliştirici modu ister ve kullanılabilirlik planına göre değişir. Güncel OpenAI yardım sayfalarına bak, sonra bu adresle ve OAuth girişiyle bir bağlayıcı ekle.",
+    "password": "Bir bağlantıyı sadece admin şifresini bilen biri onaylayabilir. Birden fazla uygulamayı onaylayabilirsin.",
+    "signOutTitle": "Çıkış yap",
+    "signOutDesc": "Bu tarayıcıdaki admin oturumunu kapatır. Bağlı yapay zeka uygulamaları çalışmaya devam eder.",
+    "signOut": "Çıkış yap"
   }
 }

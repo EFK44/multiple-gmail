@@ -7,7 +7,9 @@ import { loadClient } from '../core/secrets.js';
 import { openUrl } from '../core/openUrl.js';
 import { clearGmailCache } from '../gmail/client.js';
 import { VERSION } from '../version.js';
+import { hashPassword, MIN_PASSWORD_LENGTH } from '../remote/adminAuth.js';
 import { runLocalMode } from './localHttp.js';
+import { runRemoteMode } from './remote.js';
 
 export type CliIo = {
   log: (s: string) => void;
@@ -17,11 +19,14 @@ export type CliIo = {
   openUrl: (url: string) => Promise<void>;
   // Starts the local setup server (no args, --minimized); injectable for tests.
   startLocal?: (opts: { openBrowser: boolean }) => Promise<number>;
+  // Environment for serve --remote (defaults to process.env).
+  env?: Record<string, string | undefined>;
+  // Reads a secret (hash-password): hidden input on a terminal, otherwise one line from stdin.
+  readSecret?: (prompt: string) => Promise<string>;
 };
 
 export const EXIT_OK = 0;
 export const EXIT_USER_ERROR = 1;
-export const EXIT_NOT_AVAILABLE = 2;
 
 const USAGE = `Usage: multiple-gmail [command]
 
@@ -33,7 +38,8 @@ const USAGE = `Usage: multiple-gmail [command]
   accounts reconnect X                re-authorize an existing account
   accounts remove X [--yes]           disconnect an account
   gen-key                             print a new MULTIPLE_GMAIL_MASTER_KEY
-  serve --remote                      remote mode (not available yet)
+  hash-password                       print an ADMIN_PASSWORD_HASH for serve --remote
+  serve --remote                      server mode for web AI apps (see DEPLOY.md)
   --version, --help`;
 
 export function defaultIo(): CliIo {
@@ -53,10 +59,59 @@ export function defaultIo(): CliIo {
   };
 }
 
-// Placeholder for modes that later tasks implement; only the handler needs replacing then.
-export function notAvailableYet(what: string, io: CliIo): number {
-  io.error(`Not available yet: ${what}.`);
-  return EXIT_NOT_AVAILABLE;
+// Hidden input on a TTY (no echo), else the first line of stdin (piped).
+export function readSecretFromStdin(prompt: string): Promise<string> {
+  const stdin = process.stdin;
+  if (!stdin.isTTY) {
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      stdin.on('data', (c: Buffer) => chunks.push(c));
+      stdin.on('end', () => resolve(Buffer.concat(chunks).toString('utf8').split(/\r?\n/)[0] ?? ''));
+      stdin.on('error', reject);
+    });
+  }
+  return new Promise((resolve, reject) => {
+    process.stderr.write(prompt);
+    let value = '';
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding('utf8');
+    const done = (err?: Error) => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdin.off('data', onData);
+      process.stderr.write('\n');
+      if (err) reject(err);
+      else resolve(value);
+    };
+    const onData = (chunk: string) => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n') return done();
+        if (ch === '\u0003') return done(new Error('Cancelled.'));
+        if (ch === '\u007f' || ch === '\b') value = value.slice(0, -1);
+        else if (ch >= ' ') value += ch;
+      }
+    };
+    stdin.on('data', onData);
+  });
+}
+
+async function hashPasswordCommand(io: CliIo): Promise<number> {
+  const read = io.readSecret ?? readSecretFromStdin;
+  const password = await read('Admin password: ');
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    io.error(`The password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+    return EXIT_USER_ERROR;
+  }
+  if (io.isTty) {
+    const again = await read('Repeat the password: ');
+    if (again !== password) {
+      io.error('The passwords do not match.');
+      return EXIT_USER_ERROR;
+    }
+  }
+  io.log(await hashPassword(password));
+  return EXIT_OK;
 }
 
 function parseFlags(args: string[]): { flags: Map<string, string | true>; positional: string[] } {
@@ -227,7 +282,8 @@ export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<n
       return EXIT_OK;
     }
     if (cmd === 'accounts') return await accounts(rest, io);
-    if (cmd === 'serve' && rest.includes('--remote')) return notAvailableYet('remote mode', io);
+    if (cmd === 'hash-password') return await hashPasswordCommand(io);
+    if (cmd === 'serve' && rest.includes('--remote')) return await runRemoteMode(io.env ?? process.env, io);
     io.error(USAGE);
     return EXIT_USER_ERROR;
   } catch (e) {

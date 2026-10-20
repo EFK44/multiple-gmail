@@ -108,10 +108,10 @@ describe('cli', () => {
     expect(await runCli(['--help'], o)).toBe(0);
   });
 
-  it('remote mode is not built yet and exits 2', async () => {
+  it('serve without --remote prints the usage', async () => {
     const o = io();
-    expect(await runCli(['serve', '--remote'], o)).toBe(2);
-    expect(o.err.join('\n')).toContain('Not available yet');
+    expect(await runCli(['serve'], o)).toBe(1);
+    expect(o.err.join('\n')).toContain('serve --remote');
   });
 
   it('no args and --minimized start the local server, minimized without a browser', async () => {

@@ -249,25 +249,116 @@ function sendPlain(res: ServerResponse, status: number): void {
   res.end(status === 404 ? 'Not found' : 'Method not allowed');
 }
 
-export async function startLoopbackAuth(
-  alias: string,
-  opts: LoopbackOptions = {},
-): Promise<{ url: string; done: Promise<ConnectedAccount> }> {
+type CompleteArgs = {
+  alias: string;
+  reconnect: boolean;
+  client: OAuthClient;
+  codeVerifier: string;
+  redirectUri: string;
+  exchangeCode: NonNullable<LoopbackDeps['exchangeCode']>;
+  getProfileEmail: NonNullable<LoopbackDeps['getProfileEmail']>;
+  doFetch: typeof fetch;
+  // True once the flow has timed out or finished: nothing may be saved then.
+  cancelled: () => boolean;
+  // Called after the Google network calls, before the local file work.
+  networkDone: () => void;
+};
+
+// Shared by the loopback (local) and web (remote) flows: exchange the code, check the grant, and save the account.
+function completeAuth(c: CompleteArgs): (code: string) => Promise<ConnectedAccount> {
+  const { alias: a, client, codeVerifier, redirectUri, exchangeCode, getProfileEmail, doFetch } = c;
+  return async (code: string): Promise<ConnectedAccount> => {
+    const tokens = await exchangeCode({ client, code, codeVerifier, redirectUri });
+    if (!tokens.refreshToken) {
+      throw new Error(
+        `Google did not return a refresh token. Remove this app's access at ${PERMISSIONS_URL} and try again.`,
+      );
+    }
+    if (!hasScope(tokens.scope, GMAIL_SCOPE)) {
+      throw new Error(
+        'Gmail access was not granted. Try again and tick the Gmail permission checkbox on the Google consent screen.',
+      );
+    }
+    if (!tokens.accessToken) throw new Error('Google did not return an access token. Try again.');
+    const email = (await getProfileEmail(tokens.accessToken, client)).trim();
+    // The network calls are done; the remaining steps are local file work and are not bounded by the Google timeout.
+    c.networkDone();
+
+    const refreshToken = tokens.refreshToken;
+    const now = await loadConfig();
+    // Revoking a refresh token revokes the whole grant, so never do it for an email that is already connected.
+    const alreadyConnected = Object.values(now.accounts).some((entry) => sameEmail(entry.email, email));
+    const reject = async (message: string): Promise<never> => {
+      if (!alreadyConnected) await revokeQuietly(doFetch, refreshToken);
+      throw new Error(message);
+    };
+    if (c.cancelled()) throw new Error('Google sign-in timed out.');
+    const current = now.accounts[a];
+    if (c.reconnect) {
+      if (!current) return reject(`No account named "${a}" to reconnect.`);
+      if (!sameEmail(current.email, email)) {
+        return reject(`Signed in as ${email} but this alias belongs to ${current.email}`);
+      }
+    } else if (current) {
+      return reject(`Alias already exists, use Reconnect: "${a}".`);
+    }
+    for (const [other, entry] of Object.entries(now.accounts)) {
+      if (other !== a && sameEmail(entry.email, email)) {
+        return reject(`This Google account (${email}) is already connected as alias ${other}.`);
+      }
+    }
+
+    if (c.cancelled()) throw new Error('Google sign-in timed out.');
+    await saveToken(a, {
+      refreshToken: tokens.refreshToken,
+      ...(tokens.accessToken ? { accessToken: tokens.accessToken } : {}),
+      ...(typeof tokens.expiryDate === 'number' ? { expiryDate: tokens.expiryDate } : {}),
+      scope: tokens.scope ?? GMAIL_SCOPE,
+    });
+    now.accounts[a] = { email, addedAt: current?.addedAt ?? new Date().toISOString() };
+    await saveConfig(now);
+    return { alias: a, email };
+  };
+}
+
+// Checks shared by both flows before a sign-in starts.
+async function prepareAuth(alias: string, opts: LoopbackOptions) {
   const a = validateAlias(alias);
   const deps = opts.deps ?? {};
-  const exchangeCode = deps.exchangeCode ?? defaultExchangeCode;
-  const getProfileEmail = deps.getProfileEmail ?? defaultGetProfileEmail;
-  const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const doFetch = deps.fetch ?? fetch;
-
   const cfg = await loadConfig();
   const existing = cfg.accounts[a];
   if (opts.reconnect && !existing) throw new AccountError('unknown_alias', `No account named "${a}" to reconnect.`);
   if (!opts.reconnect && existing) throw new AccountError('alias_exists', `Alias already exists, use Reconnect: "${a}".`);
-  const lang = opts.lang ?? cfg.language;
-
   const client = await (deps.loadClient ?? loadClient)();
   if (!client) throw new AccountError('no_client', 'No OAuth client has been uploaded yet. Upload the OAuth client JSON first.');
+  return {
+    a,
+    client,
+    existing,
+    lang: opts.lang ?? cfg.language,
+    exchangeCode: deps.exchangeCode ?? defaultExchangeCode,
+    getProfileEmail: deps.getProfileEmail ?? defaultGetProfileEmail,
+    timeoutMs: deps.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    doFetch: deps.fetch ?? fetch,
+  };
+}
+
+function callbackError(error: string): AuthFlowError {
+  const kind = classifyOAuthError(error);
+  const msg =
+    kind === 'admin_blocked'
+      ? 'Access blocked: your Google Workspace administrator does not allow this app. Mark the OAuth client as Trusted in the Admin console (Security > API controls > third-party app access) and try again.'
+      : kind === 'user_denied'
+        ? 'Google sign-in was cancelled or access was denied.'
+        : 'Google sign-in failed. Try again.';
+  return new AuthFlowError(kind, msg);
+}
+
+export async function startLoopbackAuth(
+  alias: string,
+  opts: LoopbackOptions = {},
+): Promise<{ url: string; done: Promise<ConnectedAccount> }> {
+  const { a, client, existing, lang, exchangeCode, getProfileEmail, timeoutMs, doFetch } = await prepareAuth(alias, opts);
 
   const server = createServer();
   await new Promise<void>((resolve, reject) => {
@@ -311,58 +402,18 @@ export async function startLoopbackAuth(
   }, timeoutMs);
   timer.unref?.();
 
-  const complete = async (code: string): Promise<ConnectedAccount> => {
-    const tokens = await exchangeCode({ client, code, codeVerifier: auth.codeVerifier, redirectUri });
-    if (!tokens.refreshToken) {
-      throw new Error(
-        `Google did not return a refresh token. Remove this app's access at ${PERMISSIONS_URL} and try again.`,
-      );
-    }
-    if (!hasScope(tokens.scope, GMAIL_SCOPE)) {
-      throw new Error(
-        'Gmail access was not granted. Try again and tick the Gmail permission checkbox on the Google consent screen.',
-      );
-    }
-    if (!tokens.accessToken) throw new Error('Google did not return an access token. Try again.');
-    const email = (await getProfileEmail(tokens.accessToken, client)).trim();
-    // The network calls are done; the remaining steps are local file work and are not bounded by the Google timeout.
-    clearTimeout(exchangeTimer);
-
-    const refreshToken = tokens.refreshToken;
-    const now = await loadConfig();
-    // Revoking a refresh token revokes the whole grant, so never do it for an email that is already connected.
-    const alreadyConnected = Object.values(now.accounts).some((entry) => sameEmail(entry.email, email));
-    const reject = async (message: string): Promise<never> => {
-      if (!alreadyConnected) await revokeQuietly(doFetch, refreshToken);
-      throw new Error(message);
-    };
-    if (settled) throw new Error('Google sign-in timed out.');
-    const current = now.accounts[a];
-    if (opts.reconnect) {
-      if (!current) return reject(`No account named "${a}" to reconnect.`);
-      if (!sameEmail(current.email, email)) {
-        return reject(`Signed in as ${email} but this alias belongs to ${current.email}`);
-      }
-    } else if (current) {
-      return reject(`Alias already exists, use Reconnect: "${a}".`);
-    }
-    for (const [other, entry] of Object.entries(now.accounts)) {
-      if (other !== a && sameEmail(entry.email, email)) {
-        return reject(`This Google account (${email}) is already connected as alias ${other}.`);
-      }
-    }
-
-    if (settled) throw new Error('Google sign-in timed out.');
-    await saveToken(a, {
-      refreshToken: tokens.refreshToken,
-      ...(tokens.accessToken ? { accessToken: tokens.accessToken } : {}),
-      ...(typeof tokens.expiryDate === 'number' ? { expiryDate: tokens.expiryDate } : {}),
-      scope: tokens.scope ?? GMAIL_SCOPE,
-    });
-    now.accounts[a] = { email, addedAt: current?.addedAt ?? new Date().toISOString() };
-    await saveConfig(now);
-    return { alias: a, email };
-  };
+  const complete = completeAuth({
+    alias: a,
+    reconnect: !!opts.reconnect,
+    client,
+    codeVerifier: auth.codeVerifier,
+    redirectUri,
+    exchangeCode,
+    getProfileEmail,
+    doFetch,
+    cancelled: () => settled,
+    networkDone: () => clearTimeout(exchangeTimer),
+  });
 
   let handling = false;
   server.on('request', (req: IncomingMessage, res: ServerResponse) => {
@@ -388,15 +439,9 @@ export async function startLoopbackAuth(
 
     const error = q.get('error');
     if (error) {
-      const kind = classifyOAuthError(error);
-      sendPage(res, 200, pageLang, kind === 'unknown' ? 'failed' : kind);
-      const msg =
-        kind === 'admin_blocked'
-          ? 'Access blocked: your Google Workspace administrator does not allow this app. Mark the OAuth client as Trusted in the Admin console (Security > API controls > third-party app access) and try again.'
-          : kind === 'user_denied'
-            ? 'Google sign-in was cancelled or access was denied.'
-            : 'Google sign-in failed. Try again.';
-      return finish({ err: new AuthFlowError(kind, msg) });
+      const err = callbackError(error);
+      sendPage(res, 200, pageLang, err.code === 'unknown' ? 'failed' : (err.code as PageKind));
+      return finish({ err });
     }
     const code = q.get('code');
     if (!code) {
@@ -416,4 +461,123 @@ export async function startLoopbackAuth(
   });
 
   return { url: auth.url, done };
+}
+
+// ---------- web flow (remote mode) ----------
+
+export type WebAuthStart = (
+  alias: string,
+  opts?: Omit<LoopbackOptions, 'deps'>,
+) => Promise<{ url: string; done: Promise<ConnectedAccount> }>;
+
+type WebFlow = {
+  lang: 'en' | 'tr';
+  complete: (code: string) => Promise<ConnectedAccount>;
+  finish: (r: { ok: ConnectedAccount } | { err: Error }) => void;
+  isSettled: () => boolean;
+};
+
+const MAX_WEB_FLOWS = 16;
+
+// Remote mode: Google redirects the browser to redirectUri (PUBLIC_URL + /oauth/google/callback) on this server, so
+// there is no per-flow listener. startWebAuth is the sibling of startLoopbackAuth (same beginAuth, same checks, same
+// completion); handleCallback answers the callback request. The caller authenticates the callback request itself.
+export function createWebAuth(o: { redirectUri: string; deps?: LoopbackDeps }): {
+  startWebAuth: WebAuthStart;
+  handleCallback: (query: URLSearchParams, res: ServerResponse) => Promise<void>;
+} {
+  const flows = new Map<string, WebFlow>();
+
+  const startWebAuth: WebAuthStart = async (alias, opts = {}) => {
+    const p = await prepareAuth(alias, { ...opts, deps: o.deps });
+    const auth = beginAuth({ alias: p.a, client: p.client, redirectUri: o.redirectUri, loginHint: opts.loginHint ?? p.existing?.email });
+    const key = createHash('sha256').update(auth.state, 'utf8').digest('hex');
+    let settled = false;
+    let resolveDone!: (v: ConnectedAccount) => void;
+    let rejectDone!: (e: Error) => void;
+    const done = new Promise<ConnectedAccount>((res, rej) => {
+      resolveDone = res;
+      rejectDone = rej;
+    });
+    let exchangeTimer: NodeJS.Timeout | undefined;
+    const finish = (r: { ok: ConnectedAccount } | { err: Error }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(exchangeTimer);
+      flows.delete(key);
+      if ('ok' in r) resolveDone(r.ok);
+      else rejectDone(r.err);
+    };
+    const timer = setTimeout(() => {
+      finish({ err: new AuthFlowError('timeout', `Google sign-in timed out after ${formatDuration(p.timeoutMs)}. Start again.`) });
+    }, p.timeoutMs);
+    timer.unref?.();
+    const exchangeBound = Math.min(p.timeoutMs, 60_000);
+    const complete = completeAuth({
+      alias: p.a,
+      reconnect: !!opts.reconnect,
+      client: p.client,
+      codeVerifier: auth.codeVerifier,
+      redirectUri: o.redirectUri,
+      exchangeCode: p.exchangeCode,
+      getProfileEmail: p.getProfileEmail,
+      doFetch: p.doFetch,
+      cancelled: () => settled,
+      networkDone: () => clearTimeout(exchangeTimer),
+    });
+    // Oldest pending flow is dropped when too many are open.
+    while (flows.size >= MAX_WEB_FLOWS) {
+      const oldest = flows.values().next().value;
+      if (!oldest) break;
+      oldest.finish({ err: new AuthFlowError('timeout', 'Too many sign-ins were started. Start again.') });
+    }
+    flows.set(key, {
+      lang: p.lang,
+      complete: (code) => {
+        exchangeTimer = setTimeout(() => {
+          finish({ err: new AuthFlowError('timeout', `Google sign-in timed out after ${formatDuration(exchangeBound)}. Start again.`) });
+        }, exchangeBound);
+        exchangeTimer.unref?.();
+        return complete(code);
+      },
+      finish,
+      isSettled: () => settled,
+    });
+    // Always handled by the caller; avoid an unhandled rejection if it is not.
+    done.catch(() => {});
+    return { url: auth.url, done };
+  };
+
+  async function handleCallback(q: URLSearchParams, res: ServerResponse): Promise<void> {
+    const state = q.get('state');
+    const key = state ? createHash('sha256').update(state, 'utf8').digest('hex') : '';
+    const flow = key ? flows.get(key) : undefined;
+    const qLang = q.get('lang');
+    const lang: 'en' | 'tr' = qLang === 'en' || qLang === 'tr' ? qLang : (flow?.lang ?? 'en');
+    if (!flow || flow.isSettled()) return sendPage(res, 400, lang, 'invalid');
+    // Single use: a second callback with the same state is invalid.
+    flows.delete(key);
+    const error = q.get('error');
+    if (error) {
+      const err = callbackError(error);
+      sendPage(res, 200, lang, err.code === 'unknown' ? 'failed' : (err.code as PageKind));
+      return flow.finish({ err });
+    }
+    const code = q.get('code');
+    if (!code) {
+      sendPage(res, 400, lang, 'failed');
+      return flow.finish({ err: new AuthFlowError('unknown', 'Google did not return an authorization code. Try again.') });
+    }
+    try {
+      const acct = await flow.complete(code);
+      sendPage(res, 200, lang, 'success');
+      flow.finish({ ok: acct });
+    } catch (err) {
+      sendPage(res, 200, lang, 'failed');
+      flow.finish({ err: err instanceof Error ? err : new Error('Connecting the account failed.') });
+    }
+  }
+
+  return { startWebAuth, handleCallback };
 }

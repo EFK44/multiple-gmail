@@ -28,6 +28,12 @@ export function resetMasterKeyCacheForTests(): void {
   cached = undefined;
 }
 
+// Remote mode: the key always comes from MULTIPLE_GMAIL_MASTER_KEY (also on Windows), validated at startup.
+export function useMasterKey(key: Buffer): void {
+  if (key.length !== KEY_LEN) throw new Error(ENV_MESSAGE);
+  cached = Promise.resolve(Buffer.from(key));
+}
+
 export function keyFromEnv(value: string | undefined): Buffer {
   const v = (value ?? '').trim();
   if (!v || v.length % 4 !== 0 || !BASE64_RE.test(v)) throw new Error(ENV_MESSAGE);
