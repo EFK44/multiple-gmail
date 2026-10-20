@@ -1,5 +1,5 @@
-import { removeAccount } from '../core/accounts.js';
-import { loadConfig, saveConfig, validateAlias } from '../core/config.js';
+import { removeAccount, renameAccount } from '../core/accounts.js';
+import { getAccount, loadConfig, NameError, newAccountId, sameName, saveConfig, validateId, validateName } from '../core/config.js';
 import { AccountError, AuthFlowError, startLoopbackAuth } from '../core/googleAuth.js';
 import {
   getLocalApiKey,
@@ -14,7 +14,7 @@ import { createIntegrationsApi, type IntegrationsDeps } from '../integrations/ro
 
 export type ApiDeps = {
   startLoopbackAuth: typeof startLoopbackAuth;
-  removeAccount: (alias: string) => Promise<{ revoked: boolean }>;
+  removeAccount: (id: string) => Promise<{ revoked: boolean }>;
   integrations: Partial<IntegrationsDeps>;
   // Remote mode (serve --remote): no local API key, integrations or autostart, and only Web application clients.
   remote?: { mcpUrl: string; googleRedirectUri: string };
@@ -22,7 +22,7 @@ export type ApiDeps = {
 
 export type ApiRequest = {
   method: string;
-  // Path after "/api", for example "/state" or "/accounts/alpha/status".
+  // Path after "/api", for example "/state" or "/accounts/<id>/status" (the id URL-encoded).
   path: string;
   // Raw request body (utf8), "" when there is none.
   body: string;
@@ -39,6 +39,7 @@ type FlowState = {
   reason?: string;
   message?: string;
   email?: string;
+  name?: string;
   clientId?: string;
 };
 
@@ -59,39 +60,44 @@ function parseJson(body: string): Record<string, unknown> | null {
   }
 }
 
-function aliasFrom(raw: string): string | null {
+function idFrom(raw: string): string | null {
   try {
-    return validateAlias(decodeURIComponent(raw));
+    return validateId(decodeURIComponent(raw));
   } catch {
     return null;
   }
 }
 
+
 // Wizard JSON API. Authentication (session cookie) and the Origin check happen in the router before this runs.
 export function createApi(partial: Partial<ApiDeps> = {}) {
   const deps: ApiDeps = {
     startLoopbackAuth: partial.startLoopbackAuth ?? startLoopbackAuth,
-    removeAccount: partial.removeAccount ?? ((alias) => removeAccount(alias)),
+    removeAccount: partial.removeAccount ?? ((id) => removeAccount(id)),
     integrations: partial.integrations ?? {},
     remote: partial.remote,
   };
   const remote = deps.remote;
   const integrations = remote ? null : createIntegrationsApi(deps.integrations);
+  // Keyed by account id (for a new account, the id it will be saved under).
   const flows = new Map<string, FlowState>();
   // Flows whose loopback listener is being started (between reservation and authUrl).
   const starting = new Map<string, Promise<string | null>>();
+  // New accounts being signed in: id -> name, so a second "add" click with the same name reuses the flow.
+  const pendingAdds = new Map<string, string>();
   let nextFlowId = 1;
 
-  async function beginConnect(alias: string, email: string | undefined, reconnect: boolean): Promise<ApiResponse> {
+  // `target` is the display name for a new account; a reconnect goes by the id alone.
+  async function beginConnect(alias: string, target: string, email: string | undefined, reconnect: boolean): Promise<ApiResponse> {
     const inFlight = starting.get(alias);
     if (inFlight) {
       const url = await inFlight;
-      return url ? ok({ authUrl: url }) : fail(409, 'Another sign-in for this account just failed. Try again.');
+      return url ? ok({ authUrl: url, id: alias }) : fail(409, 'Another sign-in for this account just failed. Try again.');
     }
-    // One loopback listener per alias: a second click while a sign-in is pending reuses it.
+    // One loopback listener per account: a second click while a sign-in is pending reuses it.
     const pending = flows.get(alias);
-    if (pending?.status === 'pending' && pending.authUrl) return ok({ authUrl: pending.authUrl });
-    // Reserve the alias before awaiting so two concurrent requests cannot both start a flow.
+    if (pending?.status === 'pending' && pending.authUrl) return ok({ authUrl: pending.authUrl, id: alias });
+    // Reserve the id before awaiting so two concurrent requests cannot both start a flow.
     const id = nextFlowId++;
     let resolveUrl!: (u: string | null) => void;
     const urlReady = new Promise<string | null>((r) => (resolveUrl = r));
@@ -99,11 +105,14 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
     let started: Awaited<ReturnType<ApiDeps['startLoopbackAuth']>>;
     try {
       const cfg = await loadConfig();
-      started = await deps.startLoopbackAuth(alias, { loginHint: email, lang: cfg.language, reconnect });
+      started = await deps.startLoopbackAuth(target, { loginHint: email, lang: cfg.language, reconnect, id: alias });
     } catch (e) {
       resolveUrl(null);
-      // no_client, alias_exists, unknown_alias: all conflicts with the current setup state.
-      if (e instanceof AccountError) return fail(409, e.message);
+      if (e instanceof AccountError) {
+        if (e.code === 'invalid_name') return fail(400, e.message);
+        // no_client, name_exists, unknown_account: all conflicts with the current setup state.
+        return fail(409, e.message);
+      }
       return fail(500, 'Could not start Google sign-in.');
     } finally {
       starting.delete(alias);
@@ -114,8 +123,8 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
     // Always handled: an unhandled rejection here would crash the server.
     started.done.then(
       (acct) => {
-        clearGmailCache(acct.alias);
-        if (current()) flows.set(alias, { id, status: 'connected', email: acct.email });
+        clearGmailCache(acct.id);
+        if (current()) flows.set(alias, { id, status: 'connected', email: acct.email, name: acct.name });
       },
       async (e: unknown) => {
         const reason = e instanceof AuthFlowError ? e.code : 'unknown';
@@ -128,7 +137,7 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
         if (current()) flows.set(alias, state);
       },
     ).catch(() => {});
-    return ok({ authUrl: started.url });
+    return ok({ authUrl: started.url, id: alias });
   }
 
   async function state(): Promise<ApiResponse> {
@@ -145,10 +154,11 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
       clientKind: client?.kind ?? null,
       language: cfg.language,
       defaultAccount: cfg.defaultAccount,
-      accounts: Object.entries(cfg.accounts).map(([alias, a]) => ({
-        alias,
+      accounts: Object.entries(cfg.accounts).map(([id, a]) => ({
+        id,
+        name: a.name,
         email: a.email,
-        status: getAccountStatus(alias),
+        status: getAccountStatus(id),
       })),
       ...(key !== null ? { apiKeyMasked: maskKey(key) } : {}),
     });
@@ -182,23 +192,31 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
     if (path === '/accounts' && method === 'POST') {
       const body = parseJson(req.body);
       if (!body) return fail(400, 'Expected a JSON object.');
-      if (typeof body.alias !== 'string') return fail(400, 'alias is required.');
-      let alias: string;
+      // "alias" is the field name older UIs sent.
+      const rawName = typeof body.name === 'string' ? body.name : body.alias;
+      if (typeof rawName !== 'string') return fail(400, 'name is required.');
+      let name: string;
       try {
-        alias = validateAlias(body.alias);
+        name = validateName(rawName, await loadConfig());
       } catch (e) {
-        return fail(400, (e as Error).message);
+        if (!(e instanceof NameError)) throw e;
+        return fail(e.code === 'taken' ? 409 : 400, e.message);
       }
       const email = body.email;
       if (email !== undefined && (typeof email !== 'string' || email.length > 320)) {
         return fail(400, 'email must be a string.');
       }
-      return beginConnect(alias, email ? email.trim() : undefined, false);
+      for (const pid of pendingAdds.keys()) {
+        if (!starting.has(pid) && flows.get(pid)?.status !== 'pending') pendingAdds.delete(pid);
+      }
+      const id = [...pendingAdds].find(([, pname]) => sameName(pname, name))?.[0] ?? newAccountId();
+      pendingAdds.set(id, name);
+      return beginConnect(id, name, email ? email.trim() : undefined, false);
     }
 
     if (parts[0] === 'accounts' && parts.length >= 2) {
-      const alias = aliasFrom(parts[1]);
-      if (!alias) return fail(400, 'Invalid account alias.');
+      const alias = idFrom(parts[1]);
+      if (!alias) return fail(400, 'Invalid account id.');
       if (parts.length === 3 && parts[2] === 'status' && method === 'GET') {
         const flow = flows.get(alias);
         if (flow && flow.status !== 'connected') {
@@ -206,9 +224,10 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
           return ok(rest);
         }
         const cfg = await loadConfig();
-        if (cfg.accounts[alias]) {
+        const acct = getAccount(cfg, alias);
+        if (acct) {
           const live = getAccountStatus(alias);
-          return ok({ status: live === 'ok' ? 'connected' : live, email: cfg.accounts[alias].email });
+          return ok({ status: live === 'ok' ? 'connected' : live, email: acct.email, name: acct.name });
         }
         if (flow) {
           const { id: _id, authUrl: _url, ...rest } = flow;
@@ -217,16 +236,30 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
         return fail(404, `Unknown account "${alias}".`);
       }
       if (parts.length === 3 && parts[2] === 'reconnect' && method === 'POST') {
-        return beginConnect(alias, undefined, true);
+        return beginConnect(alias, alias, undefined, true);
+      }
+      if (parts.length === 3 && parts[2] === 'rename' && method === 'POST') {
+        const body = parseJson(req.body);
+        if (!body) return fail(400, 'Expected a JSON object.');
+        if (typeof body.name !== 'string') return fail(400, 'name is required.');
+        try {
+          const acct = await renameAccount(alias, body.name);
+          return ok({ ok: true, id: acct.id, name: acct.name });
+        } catch (e) {
+          if (!(e instanceof AccountError)) throw e;
+          if (e.code === 'unknown_account') return fail(404, `Unknown account "${alias}".`);
+          return fail(e.code === 'name_exists' ? 409 : 400, e.message);
+        }
       }
       if (parts.length === 2 && method === 'DELETE') {
         try {
           const { revoked } = await deps.removeAccount(alias);
           clearGmailCache(alias);
           flows.delete(alias);
+          pendingAdds.delete(alias);
           return ok({ ok: true, revoked });
         } catch (e) {
-          if (e instanceof AccountError && e.code === 'unknown_alias') return fail(404, `Unknown account "${alias}".`);
+          if (e instanceof AccountError && e.code === 'unknown_account') return fail(404, `Unknown account "${alias}".`);
           return fail(500, 'Could not remove the account.');
         }
       }

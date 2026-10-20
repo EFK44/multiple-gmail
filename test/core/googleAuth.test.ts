@@ -47,7 +47,7 @@ const client: OAuthClient = {
 
 describe('beginAuth', () => {
   it('builds a PKCE S256 consent URL with only the Gmail scope', () => {
-    const r = beginAuth({ alias: 'alpha', client, redirectUri: 'http://127.0.0.1:5555/callback', loginHint: 'you@example.com' });
+    const r = beginAuth({ id: 'alpha', client, redirectUri: 'http://127.0.0.1:5555/callback', loginHint: 'you@example.com' });
     const u = new URL(r.url);
     expect(u.origin + u.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth');
     const p = u.searchParams;
@@ -69,8 +69,8 @@ describe('beginAuth', () => {
   });
 
   it('uses a fresh state and verifier each time', () => {
-    const a = beginAuth({ alias: 'alpha', client, redirectUri: 'http://127.0.0.1:1/callback' });
-    const b = beginAuth({ alias: 'alpha', client, redirectUri: 'http://127.0.0.1:1/callback' });
+    const a = beginAuth({ id: 'alpha', client, redirectUri: 'http://127.0.0.1:1/callback' });
+    const b = beginAuth({ id: 'alpha', client, redirectUri: 'http://127.0.0.1:1/callback' });
     expect(a.state).not.toBe(b.state);
     expect(a.codeVerifier).not.toBe(b.codeVerifier);
     expect(new URL(a.url).searchParams.has('login_hint')).toBe(false);
@@ -131,7 +131,7 @@ async function seedConfig(accounts: Record<string, { email: string; addedAt: str
 describe('startLoopbackAuth', () => {
   it('binds a 127.0.0.1 loopback redirect on /callback', async () => {
     const { deps: d } = deps({ timeoutMs: 200 });
-    const { url, done } = await startLoopbackAuth('alpha', { deps: d });
+    const { url, done } = await startLoopbackAuth('alpha', { id: 'alpha', deps: d });
     done.catch(() => {});
     const redirect = new URL(new URL(url).searchParams.get('redirect_uri')!);
     expect(redirect.hostname).toBe('127.0.0.1');
@@ -144,7 +144,7 @@ describe('startLoopbackAuth', () => {
 
   it('rejects a callback with a wrong state and does not exchange the code', async () => {
     const { deps: d, rec } = deps({ timeoutMs: 300 });
-    const { url, done } = await startLoopbackAuth('alpha', { deps: d });
+    const { url, done } = await startLoopbackAuth('alpha', { id: 'alpha', deps: d });
     done.catch(() => {});
     const res = await fetch(callbackUrl(url, { state: 'x'.repeat(43), code: 'code-1' }));
     expect(res.status).toBe(400);
@@ -157,7 +157,7 @@ describe('startLoopbackAuth', () => {
 
   it('connects an account: exchanges with PKCE, saves token and config, closes the server', async () => {
     const { deps: d, rec } = deps();
-    const { url, done } = await startLoopbackAuth('alpha', { deps: d, lang: 'tr' });
+    const { url, done } = await startLoopbackAuth('alpha', { id: 'alpha', deps: d, lang: 'tr' });
     const cb = callbackUrl(url, { state: stateOf(url), code: 'code-1' });
     const res = await fetch(cb);
     expect(res.status).toBe(200);
@@ -165,7 +165,7 @@ describe('startLoopbackAuth', () => {
     const body = await res.text();
     expect(body).toContain('lang="tr"');
     expect(body).not.toContain('code-1');
-    expect(await done).toEqual({ alias: 'alpha', email: 'you@example.com' });
+    expect(await done).toEqual({ id: 'alpha', name: 'alpha', email: 'you@example.com' });
     expect(rec.exchanges).toHaveLength(1);
     expect(rec.exchanges[0].code).toBe('code-1');
     expect(rec.exchanges[0].redirectUri).toBe(new URL(url).searchParams.get('redirect_uri'));
@@ -185,21 +185,38 @@ describe('startLoopbackAuth', () => {
     await expect(fetch(cb)).rejects.toThrow();
   });
 
+  it('a free-form name gets a random id; the token is stored under the id', async () => {
+    await seedConfig({ beta: { email: 'other@example.com', addedAt: '2026-01-01T00:00:00.000Z' } });
+    const { url, id, done } = await startLoopbackAuth('  İş   Hesabı ', { deps: deps().deps });
+    expect(id).toMatch(/^[a-z2-7]{12}$/);
+    await fetch(callbackUrl(url, { state: stateOf(url), code: 'code-1' }));
+    expect(await done).toEqual({ id, name: 'İş Hesabı', email: 'you@example.com' });
+    expect((await loadToken(id))?.refreshToken).toBe('refresh-1');
+    const cfg = await loadConfig();
+    expect(cfg.accounts[id]).toMatchObject({ name: 'İş Hesabı', email: 'you@example.com' });
+    expect(cfg.accounts.beta.name).toBe('beta');
+    // Same name in another case is taken; reconnect by name finds it.
+    await expect(startLoopbackAuth('iş hesabı', { deps: deps().deps })).rejects.toThrow(/already exists/);
+    const re = await startLoopbackAuth('İŞ HESABI', { reconnect: true, deps: deps({ timeoutMs: 100 }).deps });
+    expect(re.id).toBe(id);
+    await expect(re.done).rejects.toThrow(/timed out/);
+  });
+
   it('rejects a duplicate email under another alias', async () => {
     await seedConfig({ beta: { email: 'You@Example.com', addedAt: '2026-01-01T00:00:00.000Z' } });
     const { deps: d } = deps();
-    const { url, done } = await startLoopbackAuth('alpha', { deps: d });
+    const { url, done } = await startLoopbackAuth('alpha', { id: 'alpha', deps: d });
     done.catch(() => {});
     await fetch(callbackUrl(url, { state: stateOf(url), code: 'code-1' }));
-    await expect(done).rejects.toThrow(/already connected as alias beta/);
+    await expect(done).rejects.toThrow(/already connected as "beta"/);
     expect(await loadToken('alpha')).toBeNull();
     expect((await loadConfig()).accounts.alpha).toBeUndefined();
   });
 
   it('rejects an existing alias without reconnect, and an unknown alias with reconnect', async () => {
     await seedConfig({ alpha: { email: 'you@example.com', addedAt: '2026-01-01T00:00:00.000Z' } });
-    await expect(startLoopbackAuth('alpha', { deps: deps().deps })).rejects.toThrow(/Alias already exists, use Reconnect/);
-    await expect(startLoopbackAuth('beta', { reconnect: true, deps: deps().deps })).rejects.toThrow(/No account named "beta"/);
+    await expect(startLoopbackAuth('alpha', { id: 'alpha', deps: deps().deps })).rejects.toThrow(/An account named "alpha" already exists/);
+    await expect(startLoopbackAuth('beta', { reconnect: true, deps: deps().deps })).rejects.toThrow(/No account "beta" to reconnect/);
     await expect(startLoopbackAuth('all', { deps: deps().deps })).rejects.toThrow(/reserved/);
   });
 
@@ -207,19 +224,19 @@ describe('startLoopbackAuth', () => {
     await seedConfig({ alpha: { email: 'you@example.com', addedAt: '2026-01-01T00:00:00.000Z' } });
     const ok = await startLoopbackAuth('alpha', { reconnect: true, deps: deps().deps });
     await fetch(callbackUrl(ok.url, { state: stateOf(ok.url), code: 'code-1' }));
-    expect(await ok.done).toEqual({ alias: 'alpha', email: 'you@example.com' });
+    expect(await ok.done).toEqual({ id: 'alpha', name: 'alpha', email: 'you@example.com' });
     expect((await loadConfig()).accounts.alpha.addedAt).toBe('2026-01-01T00:00:00.000Z');
 
     const bad = await startLoopbackAuth('alpha', { reconnect: true, deps: deps({ email: 'other@example.com' }).deps });
     bad.done.catch(() => {});
     await fetch(callbackUrl(bad.url, { state: stateOf(bad.url), code: 'code-2' }));
-    await expect(bad.done).rejects.toThrow('Signed in as other@example.com but this alias belongs to you@example.com');
+    await expect(bad.done).rejects.toThrow('Signed in as other@example.com but the account "alpha" belongs to you@example.com');
     expect((await loadToken('alpha'))?.refreshToken).toBe('refresh-1');
   });
 
   it('rejects done with code admin_blocked when Google returns admin_policy_enforced', async () => {
     const { deps: d, rec } = deps();
-    const { url, done } = await startLoopbackAuth('alpha', { deps: d });
+    const { url, done } = await startLoopbackAuth('alpha', { id: 'alpha', deps: d });
     done.catch(() => {});
     const res = await fetch(callbackUrl(url, { state: stateOf(url), error: 'admin_policy_enforced' }));
     expect(res.status).toBe(200);
@@ -231,7 +248,7 @@ describe('startLoopbackAuth', () => {
 
   it('rejects done with code user_denied on access_denied', async () => {
     const { deps: d } = deps();
-    const { url, done } = await startLoopbackAuth('alpha', { deps: d });
+    const { url, done } = await startLoopbackAuth('alpha', { id: 'alpha', deps: d });
     done.catch(() => {});
     await fetch(callbackUrl(url, { state: stateOf(url), error: 'access_denied' }));
     const err = (await done.catch((e: unknown) => e)) as Error & { code?: string };
@@ -240,7 +257,7 @@ describe('startLoopbackAuth', () => {
 
   it('fails clearly when Google returns no refresh token', async () => {
     const { deps: d } = deps({ tokens: { accessToken: 'a', scope: GMAIL_SCOPE } });
-    const { url, done } = await startLoopbackAuth('alpha', { deps: d });
+    const { url, done } = await startLoopbackAuth('alpha', { id: 'alpha', deps: d });
     done.catch(() => {});
     await fetch(callbackUrl(url, { state: stateOf(url), code: 'code-1' }));
     await expect(done).rejects.toThrow(/myaccount\.google\.com\/permissions/);
@@ -249,7 +266,7 @@ describe('startLoopbackAuth', () => {
 
   it('fails when the Gmail permission was not granted', async () => {
     const { deps: d } = deps({ tokens: { refreshToken: 'r', accessToken: 'a', scope: 'openid email' } });
-    const { url, done } = await startLoopbackAuth('alpha', { deps: d });
+    const { url, done } = await startLoopbackAuth('alpha', { id: 'alpha', deps: d });
     done.catch(() => {});
     await fetch(callbackUrl(url, { state: stateOf(url), code: 'code-1' }));
     await expect(done).rejects.toThrow(/Gmail permission checkbox/);
@@ -258,7 +275,7 @@ describe('startLoopbackAuth', () => {
 
   it('fails when no OAuth client has been uploaded', async () => {
     const d: LoopbackDeps = { ...deps().deps, loadClient: async () => null };
-    await expect(startLoopbackAuth('alpha', { deps: d })).rejects.toThrow(/OAuth client/);
+    await expect(startLoopbackAuth('alpha', { id: 'alpha', deps: d })).rejects.toThrow(/OAuth client/);
   });
 
   it('does not time out mid-exchange: the timer is cleared once the callback is handled', async () => {
@@ -271,11 +288,11 @@ describe('startLoopbackAuth', () => {
         return { refreshToken: 'refresh-1', accessToken: 'access-1', expiryDate: 1, scope: GMAIL_SCOPE };
       },
     };
-    const { url, done } = await startLoopbackAuth('alpha', { deps: d });
+    const { url, done } = await startLoopbackAuth('alpha', { id: 'alpha', deps: d });
     // Callback arrives near the end of the flow timeout; the exchange then outlives the original timer.
     await new Promise((r) => setTimeout(r, 400));
     await fetch(callbackUrl(url, { state: stateOf(url), code: 'code-1' }));
-    expect(await done).toEqual({ alias: 'alpha', email: 'you@example.com' });
+    expect(await done).toEqual({ id: 'alpha', name: 'alpha', email: 'you@example.com' });
     expect((await loadToken('alpha'))?.refreshToken).toBe('refresh-1');
   });
 
@@ -314,7 +331,7 @@ describe('startLoopbackAuth', () => {
     });
     dup.done.catch(() => {});
     await fetch(callbackUrl(dup.url, { state: stateOf(dup.url), code: 'c' }));
-    await expect(dup.done).rejects.toThrow(/already connected as alias beta/);
+    await expect(dup.done).rejects.toThrow(/already connected as "beta"/);
     expect(calls).toHaveLength(1);
 
     // Reconnect mismatch where the signed-in email belongs to another alias: no revoke either.
@@ -338,7 +355,7 @@ describe('startLoopbackAuth', () => {
         return { refreshToken: 'late', accessToken: 'a', expiryDate: 1, scope: GMAIL_SCOPE };
       },
     };
-    const { url, done } = await startLoopbackAuth('alpha', { deps: d });
+    const { url, done } = await startLoopbackAuth('alpha', { id: 'alpha', deps: d });
     done.catch(() => {});
     fetch(callbackUrl(url, { state: stateOf(url), code: 'c' })).catch(() => {});
     const err = (await done.catch((e: unknown) => e)) as Error & { code?: string };

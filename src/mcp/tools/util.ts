@@ -4,10 +4,11 @@ import type { loadConfig } from '../../core/config.js';
 import type { GmailApi, getGmail } from '../../gmail/client.js';
 import { friendly, toToolError } from '../../gmail/errors.js';
 import type { MessageFormat } from '../../gmail/shape.js';
-import { resolveAccounts } from '../accountArg.js';
+import { resolveAccounts, type ResolvedAccount } from '../accountArg.js';
 
 export type Deps = { getGmail: typeof getGmail; loadConfig: typeof loadConfig };
-export type Account = { alias: string; api: GmailApi; email: string };
+// `id` is internal (token file, caches); `name` is what tool output shows.
+export type Account = { id: string; name: string; api: GmailApi; email: string };
 
 export function ok(data: Record<string, unknown>): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 1) }], structuredContent: data };
@@ -43,15 +44,16 @@ export function httpStatus(e: unknown): number | undefined {
 }
 
 // Opens one account and runs `fn` on it; any failure is mapped by toToolError so raw googleapis errors never escape.
-export async function withAccount<T>(deps: Deps, alias: string, fn: (a: Account) => Promise<T>): Promise<T> {
+export async function withAccount<T>(deps: Deps, acct: ResolvedAccount, fn: (a: Account) => Promise<T>): Promise<T> {
+  const { id, name } = acct;
   try {
-    const { api, email } = await deps.getGmail(alias);
-    return await fn({ alias, api, email });
+    const { api, email } = await deps.getGmail(id);
+    return await fn({ id, name, api, email });
   } catch (e) {
     // Local failures (fs, config, our own bugs) are not Gmail errors: leave them for run() to log and hide.
-    if (isNetworkError(e)) throw friendly(`Could not reach Gmail for ${alias}. Check the internet connection and try again.`);
+    if (isNetworkError(e)) throw friendly(`Could not reach Gmail for ${name}. Check the internet connection and try again.`);
     if (!isFriendly(e) && !isGoogleError(e)) throw e;
-    throw toToolError(e, alias);
+    throw toToolError(e, id, name);
   }
 }
 
@@ -80,8 +82,8 @@ export function safeMessage(e: unknown): string {
 }
 
 export async function oneAccount<T>(deps: Deps, arg: string, fn: (a: Account) => Promise<T>): Promise<T> {
-  const [alias] = await resolveAccounts(arg, false, deps.loadConfig);
-  return withAccount(deps, alias, fn);
+  const [acct] = await resolveAccounts(arg, false, deps.loadConfig);
+  return withAccount(deps, acct, fn);
 }
 
 // Single account: `{ account, ...result }`. `all`: accounts in parallel, config order, failures listed in `errors`.
@@ -91,20 +93,20 @@ export async function fanOut(
   pageToken: string | undefined,
   fn: (a: Account) => Promise<Record<string, unknown>>,
 ): Promise<Record<string, unknown>> {
-  const aliases = await resolveAccounts(arg, true, deps.loadConfig);
+  const accts = await resolveAccounts(arg, true, deps.loadConfig);
   if (arg.trim().toLowerCase() !== 'all') {
-    const alias = aliases[0];
-    return { account: alias, ...(await withAccount(deps, alias, fn)) };
+    const acct = accts[0];
+    return { account: acct.name, ...(await withAccount(deps, acct, fn)) };
   }
   if (pageToken) {
     throw friendly('pageToken cannot be used with account "all"; page further with a single account.');
   }
-  const settled = await Promise.allSettled(aliases.map((alias) => withAccount(deps, alias, fn)));
+  const settled = await Promise.allSettled(accts.map((acct) => withAccount(deps, acct, fn)));
   const results: Record<string, unknown>[] = [];
   const errors: { account: string; message: string }[] = [];
   settled.forEach((s, i) => {
-    if (s.status === 'fulfilled') results.push({ account: aliases[i], ...s.value });
-    else errors.push({ account: aliases[i], message: safeMessage(s.reason) });
+    if (s.status === 'fulfilled') results.push({ account: accts[i].name, ...s.value });
+    else errors.push({ account: accts[i].name, message: safeMessage(s.reason) });
   });
   return { results, errors };
 }

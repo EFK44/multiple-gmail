@@ -33,8 +33,8 @@ const cfg: AppConfig = {
   language: 'en',
   defaultAccount: 'alpha',
   accounts: {
-    alpha: { email: 'alpha@example.com', addedAt: '2026-10-01T00:00:00.000Z' },
-    beta: { email: 'beta@example.com', addedAt: '2026-10-02T00:00:00.000Z' },
+    alpha: { name: 'alpha', email: 'alpha@example.com', addedAt: '2026-10-01T00:00:00.000Z' },
+    beta: { name: 'beta', email: 'beta@example.com', addedAt: '2026-10-02T00:00:00.000Z' },
   },
 };
 
@@ -142,7 +142,7 @@ describe('tool list', () => {
     for (const t of tools) {
       expect(t.description?.startsWith('Multi-account Gmail.')).toBe(true);
       if (t.name !== 'list_accounts') {
-        expect(JSON.stringify(t.inputSchema)).toContain('Alias or email from list_accounts');
+        expect(JSON.stringify(t.inputSchema)).toContain('Account name or email from list_accounts');
       }
     }
     const send = tools.find((t) => t.name === 'send_message')!;
@@ -160,10 +160,25 @@ describe('tool list', () => {
 
 describe('resolveAccounts', () => {
   const load = async () => cfg;
-  it('maps alias or email case-insensitively', async () => {
-    expect(await resolveAccounts('ALPHA', false, load)).toEqual(['alpha']);
-    expect(await resolveAccounts('Beta@Example.com', false, load)).toEqual(['beta']);
-    expect(await resolveAccounts('all', true, load)).toEqual(['alpha', 'beta']);
+  it('maps name or email case-insensitively', async () => {
+    expect(await resolveAccounts('ALPHA', false, load)).toEqual([{ id: 'alpha', name: 'alpha' }]);
+    expect(await resolveAccounts('Beta@Example.com', false, load)).toEqual([{ id: 'beta', name: 'beta' }]);
+    expect(await resolveAccounts('all', true, load)).toEqual([
+      { id: 'alpha', name: 'alpha' },
+      { id: 'beta', name: 'beta' },
+    ]);
+  });
+  it('maps free-form names, emails and ids', async () => {
+    const named = async (): Promise<AppConfig> => ({
+      ...cfg,
+      accounts: { k2k2k2k2k2k2: { name: 'İş Hesabı', email: 'work@example.com', addedAt: 'x' } },
+    });
+    const hit = [{ id: 'k2k2k2k2k2k2', name: 'İş Hesabı' }];
+    expect(await resolveAccounts('iş hesabı', false, named)).toEqual(hit);
+    expect(await resolveAccounts('İŞ HESABI', false, named)).toEqual(hit);
+    expect(await resolveAccounts('WORK@example.com', false, named)).toEqual(hit);
+    expect(await resolveAccounts('k2k2k2k2k2k2', false, named)).toEqual(hit);
+    await expect(resolveAccounts('nope', false, named)).rejects.toThrow(/Available accounts: İş Hesabı./);
   });
   it('rejects all where not allowed and unknown accounts', async () => {
     await expect(resolveAccounts('all', false, load)).rejects.toThrow(
@@ -220,13 +235,47 @@ describe('internal errors', () => {
 });
 
 describe('list_accounts', () => {
-  it('returns alias, email, status, addedAt', async () => {
+  it('returns name, email, status, addedAt', async () => {
     const { data, r } = await call('list_accounts', {});
     expect(r.isError).toBeFalsy();
     expect(data!.accounts).toEqual([
-      { alias: 'alpha', email: 'alpha@example.com', status: 'ok', addedAt: '2026-10-01T00:00:00.000Z' },
-      { alias: 'beta', email: 'beta@example.com', status: 'ok', addedAt: '2026-10-02T00:00:00.000Z' },
+      { name: 'alpha', email: 'alpha@example.com', status: 'ok', addedAt: '2026-10-01T00:00:00.000Z' },
+      { name: 'beta', email: 'beta@example.com', status: 'ok', addedAt: '2026-10-02T00:00:00.000Z' },
     ]);
+    expect(data!.defaultAccount).toBe('alpha');
+  });
+});
+
+describe('display names', () => {
+  it('tool output shows the display name, not the internal id', async () => {
+    await client.close();
+    const named: AppConfig = {
+      port: 47110,
+      language: 'en',
+      defaultAccount: 'k2k2k2k2k2k2',
+      accounts: { k2k2k2k2k2k2: { name: 'İş Hesabı', email: 'work@example.com', addedAt: 'x' } },
+    };
+    const server = buildMcpServer({
+      loadConfig: async () => named,
+      getGmail: (async (id: string) => {
+        if (id !== 'k2k2k2k2k2k2') throw new Error('wrong id ' + id);
+        return { api: fakeApi('work') as unknown as GmailApi, email: 'work@example.com' };
+      }) as never,
+    });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await server.connect(st);
+    client = new Client({ name: 'test', version: '1.0.0' });
+    await client.connect(ct);
+    const one = await call('search_threads', { account: 'iş hesabı', query: 'x' });
+    expect(one.r.isError).toBeFalsy();
+    expect(one.data!.account).toBe('İş Hesabı');
+    const all = await call('search_threads', { account: 'all', query: 'x' });
+    expect(all.data!.results[0].account).toBe('İş Hesabı');
+    const list = await call('list_accounts', {});
+    expect(list.data!.accounts[0].name).toBe('İş Hesabı');
+    expect(list.data!.defaultAccount).toBe('İş Hesabı');
+    const bad = await call('get_thread', { account: 'gamma', threadId: 't' });
+    expect(bad.text).toContain('Available accounts: İş Hesabı.');
   });
 });
 

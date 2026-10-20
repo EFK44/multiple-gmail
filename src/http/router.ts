@@ -39,6 +39,17 @@ function sendJson(res: ServerResponse, status: number, json: unknown, extra: Rec
   res.end(body);
 }
 
+// Shown for an expired or already used launch link. Both languages: the page cannot know which one the user picked.
+const LINK_USED_PAGE =
+  '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
+  '<title>multiple-gmail</title></head><body>' +
+  '<h1>This setup link has expired or was already used.</h1>' +
+  '<p>Each link works only once. Close this tab, then open multiple-gmail again (double-click it, or run it again) ' +
+  'to get a fresh tab.</p>' +
+  '<hr><div lang="tr"><h1>Bu kurulum bağlantısının süresi doldu ya da zaten kullanıldı.</h1>' +
+  "<p>Her bağlantı yalnızca bir kez çalışır. Bu sekmeyi kapat, sonra multiple-gmail'i yeniden aç (çift tıkla ya da " +
+  'yeniden çalıştır); yeni bir sekme açılır.</p></div></body></html>';
+
 function sendText(res: ServerResponse, status: number, text: string, type = 'text/plain; charset=utf-8'): void {
   res.writeHead(status, { 'Content-Type': type });
   res.end(text);
@@ -154,7 +165,9 @@ export function createRouter(ctx: RouterContext): (req: IncomingMessage, res: Se
 
     if (path === '/api' || path.startsWith('/api/')) {
       if (!ctx.sessions.hasSession(req.headers.cookie)) {
-        return sendJson(res, 401, { error: 'Not signed in. Open multiple-gmail again to get a new link.' });
+        return sendJson(res, 401, {
+          error: 'Not signed in. Close this tab, then open multiple-gmail again (double-click it or run it again) to get a fresh tab.',
+        });
       }
       const origin = req.headers.origin;
       if (method !== 'GET' && method !== 'HEAD' && origin !== selfOrigin()) {
@@ -178,11 +191,7 @@ export function createRouter(ctx: RouterContext): (req: IncomingMessage, res: Se
     // Only GET consumes a launch token: HEAD (link previews, prefetchers) must not burn it.
     if (path === '/' && method === 'GET' && url.searchParams.has('t')) {
       if (!ctx.sessions.consumeLaunchToken(url.searchParams.get('t') ?? '')) {
-        return sendText(
-          res,
-          401,
-          'This setup link has expired or was already used. Open multiple-gmail again to get a new link.',
-        );
+        return sendText(res, 401, LINK_USED_PAGE, 'text/html; charset=utf-8');
       }
       const id = ctx.sessions.createSession();
       res.writeHead(302, { Location: '/', 'Set-Cookie': ctx.sessions.cookieFor(id) });

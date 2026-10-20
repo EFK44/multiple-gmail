@@ -60,7 +60,7 @@ const DYNAMIC_KEYS = [
   ...['user_denied', 'timeout', 'admin_blocked', 'unknown'].map((r) => `accounts.failed.${r}`),
   ...['s1', 's2', 's3', 's4', 's5', 's6'].map((s) => `workspace.${s}`),
   ...['connected', 'needs_reauth', 'error', 'pending', 'failed'].map((s) => `status.${s}`),
-  ...['colAlias', 'colEmail', 'colStatus', 'colActions'].map((k) => `dashboard.${k}`),
+  ...['colName', 'colEmail', 'colStatus', 'colActions'].map((k) => `dashboard.${k}`),
 ];
 
 describe('wizard dynamic i18n keys', () => {

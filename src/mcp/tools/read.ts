@@ -26,7 +26,7 @@ export function registerReadTools(server: McpServer, deps: Deps): void {
       title: 'Search threads',
       description:
         'Multi-account Gmail. Search email threads in one account, or in every connected account with account "all" ' +
-        '(accounts run in parallel; each result carries its account alias; a failing account is listed in errors ' +
+        '(accounts run in parallel; each result carries its account name; a failing account is listed in errors ' +
         'without stopping the others). The query uses Gmail search syntax, for example from:alice@example.com, ' +
         'to:, subject:report, after:2026/01/31, before:, newer_than:7d, older_than:, label:work, is:unread, ' +
         'is:starred, has:attachment, filename:pdf, in:inbox, in:sent, category:primary, and OR / - / quotes. ' +
@@ -35,7 +35,7 @@ export function registerReadTools(server: McpServer, deps: Deps): void {
         'Returns threads with id, viewUrl, snippet and messages in MINIMAL view (ids and labels); call get_thread ' +
         'for bodies. Drafts are not returned (use list_drafts).',
       inputSchema: z.object({
-        account: accountParam.describe('Alias or email from list_accounts. Use "all" only where noted. "all" is allowed here.'),
+        account: accountParam.describe('Account name or email from list_accounts. Use "all" only where noted. "all" is allowed here.'),
         query: z.string().optional().describe('Gmail search query, for example "from:bob is:unread newer_than:3d".'),
         pageSize,
         pageToken,
@@ -95,12 +95,12 @@ export function registerReadTools(server: McpServer, deps: Deps): void {
     },
     async (args) =>
       run(() =>
-        oneAccount(deps, args.account, async ({ alias, api, email }) => {
+        oneAccount(deps, args.account, async ({ name, api, email }) => {
           const format = args.messageFormat as MessageFormat;
           const res = await api.users.threads.get({ userId: 'me', id: args.threadId, format: apiFormat(format) });
           const id = res.data.id ?? args.threadId;
           return {
-            account: alias,
+            account: name,
             id,
             viewUrl: viewUrl(email, id),
             messages: (res.data.messages ?? []).filter(notDraft).map((m) => shapeMessage(m, email, format)),
@@ -125,13 +125,13 @@ export function registerReadTools(server: McpServer, deps: Deps): void {
     },
     async (args) =>
       run(() =>
-        oneAccount(deps, args.account, async ({ alias, api, email }) => {
+        oneAccount(deps, args.account, async ({ name, api, email }) => {
           const format = args.messageFormat as MessageFormat;
           const res = await api.users.messages.get({ userId: 'me', id: args.messageId, format: apiFormat(format) });
           if (!notDraft(res.data)) {
             throw friendly(`Message ${args.messageId} is a draft; use list_drafts to see drafts.`);
           }
-          return { account: alias, ...shapeMessage(res.data, email, format) };
+          return { account: name, ...shapeMessage(res.data, email, format) };
         }),
       ),
   );
@@ -145,7 +145,7 @@ export function registerReadTools(server: McpServer, deps: Deps): void {
         'Optional query uses Gmail search syntax. Returns each draft id with its message in METADATA_ONLY view ' +
         '(sender, recipients, subject, snippet). Send a draft with send_message and its draftId.',
       inputSchema: z.object({
-        account: accountParam.describe('Alias or email from list_accounts. Use "all" only where noted. "all" is allowed here.'),
+        account: accountParam.describe('Account name or email from list_accounts. Use "all" only where noted. "all" is allowed here.'),
         query: z.string().optional().describe('Gmail search query to filter drafts.'),
         pageSize,
         pageToken,

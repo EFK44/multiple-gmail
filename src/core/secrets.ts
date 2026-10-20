@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { readFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { validateAlias } from './config.js';
+import { validateId } from './config.js';
 import { open, seal } from './crypto.js';
 import { writeFileAtomic, type WriteAtomicOptions } from './fsx.js';
 import { getMasterKey } from './masterKey.js';
@@ -82,19 +82,19 @@ export async function loadClient(): Promise<OAuthClient | null> {
   return buf ? (JSON.parse(buf.toString('utf8')) as OAuthClient) : null;
 }
 
-export async function saveToken(alias: string, t: StoredToken): Promise<void> {
-  const a = validateAlias(alias);
+export async function saveToken(id: string, t: StoredToken): Promise<void> {
+  const a = validateId(id);
   await writeSealed(tokenPath(a), Buffer.from(JSON.stringify(t), 'utf8'));
 }
 
-export async function loadToken(alias: string): Promise<StoredToken | null> {
-  const a = validateAlias(alias);
+export async function loadToken(id: string): Promise<StoredToken | null> {
+  const a = validateId(id);
   const buf = await readSealed(tokenPath(a));
   return buf ? (JSON.parse(buf.toString('utf8')) as StoredToken) : null;
 }
 
-export async function deleteToken(alias: string): Promise<void> {
-  const a = validateAlias(alias);
+export async function deleteToken(id: string): Promise<void> {
+  const a = validateId(id);
   await rm(tokenPath(a), { force: true });
 }
 

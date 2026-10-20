@@ -86,9 +86,9 @@ describe('secret store', () => {
 
   it('rejects path traversal aliases', async () => {
     const t = { refreshToken: 'r', scope: 's' };
-    await expect(saveToken('../evil', t)).rejects.toThrow(/Invalid account alias/);
-    await expect(loadToken('..\\evil')).rejects.toThrow(/Invalid account alias/);
-    await expect(deleteToken('a/b')).rejects.toThrow(/Invalid account alias/);
+    await expect(saveToken('../evil', t)).rejects.toThrow(/Invalid account id/);
+    await expect(loadToken('..\\evil')).rejects.toThrow(/Invalid account id/);
+    await expect(deleteToken('a/b')).rejects.toThrow(/Invalid account id/);
   });
 
   it('local api key is stable and rotates', async () => {

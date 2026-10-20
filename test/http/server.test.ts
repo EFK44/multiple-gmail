@@ -190,7 +190,7 @@ describe('local http server', () => {
     expect(body).toMatchObject({
       hasClient: false,
       language: 'tr',
-      accounts: [{ alias: 'alpha', email: 'you@example.com', status: 'ok' }],
+      accounts: [{ id: 'alpha', name: 'alpha', email: 'you@example.com', status: 'ok' }],
     });
     const key = await getLocalApiKey();
     expect(body.apiKeyMasked).not.toContain(key);
@@ -289,8 +289,12 @@ describe('local http server', () => {
     expect(bad.status).toBe(400);
   });
 
-  it('GET /api/apikey needs same-origin; rotate changes the key', async () => {
-    const s = await start();
+  // Spawns DPAPI (PowerShell) and replaces a sealed file that was just read; under a loaded parallel run on Windows
+  // that can fail transiently (slow spawn, or a scanner holding the file past the rename retries). The router error is
+  // put into the assertion message so a real failure is still diagnosable.
+  it('GET /api/apikey needs same-origin; rotate changes the key', { timeout: 90_000, retry: 2 }, async () => {
+    const errors: string[] = [];
+    const s = await start({ logError: (e) => errors.push(e) });
     const cookie = await session(s);
     const cross = await api(s, cookie, 'GET', '/api/apikey');
     expect(cross.status).toBe(403);
@@ -302,57 +306,114 @@ describe('local http server', () => {
     const viaOrigin = await api(s, cookie, 'GET', '/api/apikey', undefined, { Origin: origin(s) });
     expect(viaOrigin.status).toBe(200);
     const rot = await api(s, cookie, 'POST', '/api/apikey/rotate');
-    expect(rot.status).toBe(200);
+    expect(rot.status, errors.join('; ')).toBe(200);
     const after = await getLocalApiKey();
     expect(after).not.toBe(before);
     expect(JSON.parse(rot.body).apiKeyMasked.endsWith(after.slice(-4))).toBe(true);
   });
 
   it('account connect flow: pending, then connected; failures carry the reason', async () => {
-    let resolveDone!: (v: { alias: string; email: string }) => void;
+    type Acct = { id: string; name: string; email: string };
+    let resolveDone!: (v: Acct) => void;
     let rejectDone!: (e: Error) => void;
-    const calls: unknown[] = [];
-    const startAuth = vi.fn(async (alias: string, opts: unknown) => {
-      calls.push(opts);
-      const done = new Promise<{ alias: string; email: string }>((res, rej) => {
-        if (alias === 'alpha') resolveDone = res;
+    const calls: { target: string; opts: { id?: string } }[] = [];
+    const startAuth = vi.fn(async (target: string, opts: { id?: string } = {}) => {
+      calls.push({ target, opts });
+      const done = new Promise<Acct>((res, rej) => {
+        if (target === 'İş Hesabı') resolveDone = res;
         else rejectDone = rej;
       });
-      return { url: `https://accounts.example.com/auth?a=${alias}`, done };
+      return { url: `https://accounts.example.com/auth?a=${encodeURIComponent(target)}`, id: opts.id ?? 'x', done };
     });
     const s = await start({ startLoopbackAuth: startAuth });
     const cookie = await session(s);
-    const bad = await api(s, cookie, 'POST', '/api/accounts', { alias: 'All' });
+    const bad = await api(s, cookie, 'POST', '/api/accounts', { name: 'All' });
     expect(bad.status).toBe(400);
+    const long = await api(s, cookie, 'POST', '/api/accounts', { name: 'x'.repeat(41) });
+    expect(long.status).toBe(400);
 
-    const r = await api(s, cookie, 'POST', '/api/accounts', { alias: 'alpha', email: 'you@example.com' });
+    const r = await api(s, cookie, 'POST', '/api/accounts', { name: '  İş   Hesabı ', email: 'you@example.com' });
     expect(r.status).toBe(200);
-    expect(JSON.parse(r.body)).toEqual({ authUrl: 'https://accounts.example.com/auth?a=alpha' });
-    expect(calls[0]).toMatchObject({ loginHint: 'you@example.com' });
-    let st = await api(s, cookie, 'GET', '/api/accounts/alpha/status');
+    const { authUrl, id } = JSON.parse(r.body);
+    expect(authUrl).toBe(`https://accounts.example.com/auth?a=${encodeURIComponent('İş Hesabı')}`);
+    expect(id).toMatch(/^[a-z2-7]{12}$/);
+    expect(calls[0]).toMatchObject({ target: 'İş Hesabı', opts: { loginHint: 'you@example.com', id } });
+    let st = await api(s, cookie, 'GET', `/api/accounts/${id}/status`);
     expect(JSON.parse(st.body)).toEqual({ status: 'pending' });
-    resolveDone({ alias: 'alpha', email: 'you@example.com' });
+    resolveDone({ id, name: 'İş Hesabı', email: 'you@example.com' });
     await new Promise((r2) => setTimeout(r2, 10));
-    st = await api(s, cookie, 'GET', '/api/accounts/alpha/status');
-    expect(JSON.parse(st.body)).toEqual({ status: 'connected', email: 'you@example.com' });
+    st = await api(s, cookie, 'GET', `/api/accounts/${id}/status`);
+    expect(JSON.parse(st.body)).toEqual({ status: 'connected', email: 'you@example.com', name: 'İş Hesabı' });
 
-    await api(s, cookie, 'POST', '/api/accounts', { alias: 'beta' });
+    const b = JSON.parse((await api(s, cookie, 'POST', '/api/accounts', { alias: 'beta' })).body);
+    expect(calls[1].target).toBe('beta');
     rejectDone(new AuthFlowError('admin_blocked', 'blocked'));
     await new Promise((r2) => setTimeout(r2, 10));
-    st = await api(s, cookie, 'GET', '/api/accounts/beta/status');
+    st = await api(s, cookie, 'GET', `/api/accounts/${b.id}/status`);
     expect(JSON.parse(st.body)).toMatchObject({ status: 'failed', reason: 'admin_blocked' });
 
     const unknown = await api(s, cookie, 'GET', '/api/accounts/gamma/status');
     expect(unknown.status).toBe(404);
+    const invalid = await api(s, cookie, 'GET', `/api/accounts/${encodeURIComponent('İş Hesabı')}/status`);
+    expect(invalid.status).toBe(400);
+  });
+
+  it('a duplicate name (any case) is a 409 before sign-in starts', async () => {
+    const startAuth = vi.fn(async () => ({ url: 'https://accounts.example.com/x', id: 'x', done: new Promise<never>(() => {}) }));
+    const s = await start({ startLoopbackAuth: startAuth });
+    await saveConfig({
+      port: 47110,
+      language: 'en',
+      defaultAccount: null,
+      accounts: { k2k2k2k2k2k2: { name: 'İş Hesabı', email: 'you@example.com', addedAt: '2026-10-01T00:00:00.000Z' } },
+    });
+    const cookie = await session(s);
+    const r = await api(s, cookie, 'POST', '/api/accounts', { name: 'iş hesabı' });
+    expect(r.status).toBe(409);
+    expect(JSON.parse(r.body).error).toContain('already exists');
+    expect(startAuth).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/accounts/:id/rename renames; validates; needs the right origin', async () => {
+    const s = await start();
+    await saveConfig({
+      port: 47110,
+      language: 'en',
+      defaultAccount: 'alpha',
+      accounts: {
+        'alpha': { email: 'you@example.com', addedAt: '2026-10-01T00:00:00.000Z' },
+        beta: { email: 'other@example.com', addedAt: '2026-10-02T00:00:00.000Z' },
+      },
+    });
+    const cookie = await session(s);
+    const evil = await api(s, cookie, 'POST', '/api/accounts/beta/rename', { name: 'Kişisel' }, { Origin: 'http://evil.com' });
+    expect(evil.status).toBe(403);
+    const r = await api(s, cookie, 'POST', '/api/accounts/beta/rename', { name: '  Kişisel ' });
+    expect(r.status).toBe(200);
+    expect(JSON.parse(r.body)).toEqual({ ok: true, id: 'beta', name: 'Kişisel' });
+    const dup = await api(s, cookie, 'POST', '/api/accounts/alpha/rename', { name: 'KİŞİSEL' });
+    expect(dup.status).toBe(409);
+    const reserved = await api(s, cookie, 'POST', '/api/accounts/alpha/rename', { name: 'all' });
+    expect(reserved.status).toBe(400);
+    const missing = await api(s, cookie, 'POST', '/api/accounts/alpha/rename', {});
+    expect(missing.status).toBe(400);
+    const unknown = await api(s, cookie, 'POST', '/api/accounts/gamma/rename', { name: 'x' });
+    expect(unknown.status).toBe(404);
+    const state = JSON.parse((await api(s, cookie, 'GET', '/api/state')).body);
+    expect(state.accounts.map((a: { id: string; name: string }) => [a.id, a.name])).toEqual([
+      ['alpha', 'alpha'],
+      ['beta', 'Kişisel'],
+    ]);
   });
 
   it('reconnect passes reconnect: true', async () => {
-    const startAuth = vi.fn(async () => ({ url: 'https://accounts.example.com/x', done: new Promise<never>(() => {}) }));
+    const startAuth = vi.fn(async () => ({ url: 'https://accounts.example.com/x', id: 'alpha', done: new Promise<never>(() => {}) }));
     const s = await start({ startLoopbackAuth: startAuth });
     const cookie = await session(s);
     const r = await api(s, cookie, 'POST', '/api/accounts/alpha/reconnect');
     expect(r.status).toBe(200);
-    expect(startAuth).toHaveBeenCalledWith('alpha', expect.objectContaining({ reconnect: true }));
+    expect(JSON.parse(r.body)).toEqual({ authUrl: 'https://accounts.example.com/x', id: 'alpha' });
+    expect(startAuth).toHaveBeenCalledWith('alpha', expect.objectContaining({ reconnect: true, id: 'alpha' }));
   });
 
   it('maps a missing OAuth client to 409', async () => {
@@ -458,20 +519,36 @@ describe('local http server', () => {
   it('concurrent connects for one alias share one pending flow', async () => {
     const startAuth = vi.fn(async () => {
       await new Promise((r) => setTimeout(r, 30));
-      return { url: 'https://accounts.example.com/one', done: new Promise<never>(() => {}) };
+      return { url: 'https://accounts.example.com/one', id: 'x', done: new Promise<never>(() => {}) };
     });
     const s = await start({ startLoopbackAuth: startAuth });
     const cookie = await session(s);
     const [a, b] = await Promise.all([
-      api(s, cookie, 'POST', '/api/accounts', { alias: 'alpha' }),
-      api(s, cookie, 'POST', '/api/accounts', { alias: 'alpha' }),
+      api(s, cookie, 'POST', '/api/accounts', { name: 'Alpha Mail' }),
+      api(s, cookie, 'POST', '/api/accounts', { name: 'alpha mail' }),
     ]);
-    const c = await api(s, cookie, 'POST', '/api/accounts', { alias: 'alpha' });
+    const c = await api(s, cookie, 'POST', '/api/accounts', { name: 'ALPHA MAIL' });
+    const ids = new Set<string>();
     for (const r of [a, b, c]) {
       expect(r.status).toBe(200);
-      expect(JSON.parse(r.body)).toEqual({ authUrl: 'https://accounts.example.com/one' });
+      const body = JSON.parse(r.body);
+      expect(body.authUrl).toBe('https://accounts.example.com/one');
+      ids.add(body.id);
     }
+    expect(ids.size).toBe(1);
     expect(startAuth).toHaveBeenCalledTimes(1);
+  });
+
+  it('removing a pending new account frees its name for a fresh sign-in', async () => {
+    const startAuth = vi.fn(async (_t: string, o: { id?: string } = {}) => ({ url: `https://accounts.example.com/${o.id}`, id: o.id ?? 'x', done: new Promise<never>(() => {}) }));
+    const remove = vi.fn(async () => ({ revoked: false }));
+    const s = await start({ startLoopbackAuth: startAuth, removeAccount: remove });
+    const cookie = await session(s);
+    const first = JSON.parse((await api(s, cookie, 'POST', '/api/accounts', { name: 'Work' })).body);
+    expect((await api(s, cookie, 'DELETE', `/api/accounts/${first.id}`)).status).toBe(200);
+    const second = JSON.parse((await api(s, cookie, 'POST', '/api/accounts', { name: 'work' })).body);
+    expect(second.id).not.toBe(first.id);
+    expect(startAuth).toHaveBeenCalledTimes(2);
   });
 
   it('status of a configured account reflects the live Gmail status', async () => {
@@ -496,14 +573,15 @@ describe('local http server', () => {
     let rejectDone!: (e: Error) => void;
     const startAuth = vi.fn(async () => ({
       url: 'https://accounts.example.com/x',
+      id: 'x',
       done: new Promise<never>((_r, rej) => (rejectDone = rej)),
     }));
     const s = await start({ startLoopbackAuth: startAuth });
     const cookie = await session(s);
-    await api(s, cookie, 'POST', '/api/accounts', { alias: 'alpha' });
+    const { id } = JSON.parse((await api(s, cookie, 'POST', '/api/accounts', { name: 'alpha' })).body);
     rejectDone(new Error('internal detail with a secret path'));
     await new Promise((r) => setTimeout(r, 10));
-    const st = JSON.parse((await api(s, cookie, 'GET', '/api/accounts/alpha/status')).body);
+    const st = JSON.parse((await api(s, cookie, 'GET', `/api/accounts/${id}/status`)).body);
     expect(st).toMatchObject({ status: 'failed', reason: 'unknown' });
     expect(st.message).not.toContain('secret');
   });

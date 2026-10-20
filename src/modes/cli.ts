@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
-import { removeAccount } from '../core/accounts.js';
-import { loadConfig, validateAlias } from '../core/config.js';
+import { removeAccount, renameAccount } from '../core/accounts.js';
+import { accountNames, findAccount, getAccount, loadConfig, NameError, sameName, validateName } from '../core/config.js';
 import { AccountError, AuthFlowError, startLoopbackAuth } from '../core/googleAuth.js';
 import { loadClient } from '../core/secrets.js';
 import { openUrl } from '../core/openUrl.js';
@@ -16,9 +16,9 @@ export type CliIo = {
   error: (s: string) => void;
   isTty: boolean;
   confirm: (prompt: string) => Promise<string>;
-  openUrl: (url: string) => Promise<void>;
-  // Starts the local setup server (no args, --minimized); injectable for tests.
-  startLocal?: (opts: { openBrowser: boolean }) => Promise<number>;
+  openUrl: (url: string) => Promise<boolean | void>;
+  // Starts the local setup server (no args, --minimized, --print-url); injectable for tests.
+  startLocal?: (opts: { openBrowser: boolean; printUrl: boolean }) => Promise<number>;
   // Environment for serve --remote (defaults to process.env).
   env?: Record<string, string | undefined>;
   // Reads a secret (hash-password): hidden input on a terminal, otherwise one line from stdin.
@@ -32,10 +32,12 @@ const USAGE = `Usage: multiple-gmail [command]
 
   (no command)                        open the local setup app in the browser
   --minimized                         start the local server without opening the browser
+  --print-url                         print a fresh single-use setup link instead of opening the browser
   --stdio                             run as an MCP server over stdio
   accounts list                       list connected accounts
-  accounts add --alias X [--email Y]  connect a Gmail account
-  accounts reconnect X                re-authorize an existing account
+  accounts add --name X [--email Y]   connect a Gmail account (any name, quote spaces)
+  accounts reconnect X                re-authorize an account (name, email or id)
+  accounts rename X NEW               rename an account
   accounts remove X [--yes]           disconnect an account
   gen-key                             print a new MULTIPLE_GMAIL_MASTER_KEY
   hash-password                       print an ADMIN_PASSWORD_HASH for serve --remote
@@ -142,26 +144,28 @@ const ADMIN_STEPS = (clientId: string) =>
     `  Client ID: ${clientId}`,
   ].join('\n');
 
-function aliasOrError(raw: string, io: CliIo): string | null {
-  try {
-    return validateAlias(raw);
-  } catch (e) {
-    io.error((e as Error).message);
-    return null;
-  }
+// Resolves a name, email or id to the account id, or prints the available names.
+async function resolveOrError(ref: string, io: CliIo): Promise<string | null> {
+  const cfg = await loadConfig();
+  const id = findAccount(cfg, ref);
+  if (id) return id;
+  const names = accountNames(cfg);
+  io.error(`Unknown account "${ref}".${names.length ? ` Available accounts: ${names.join(', ')}.` : ''}`);
+  return null;
 }
 
-async function connect(alias: string, email: string | undefined, reconnect: boolean, io: CliIo): Promise<number> {
+// `target`: the new name (add) or the account id (reconnect); `label` is shown in messages.
+async function connect(target: string, label: string, email: string | undefined, reconnect: boolean, io: CliIo): Promise<number> {
   let started;
   try {
-    started = await startLoopbackAuth(alias, { reconnect, loginHint: email });
+    started = await startLoopbackAuth(target, { reconnect, loginHint: email, ...(reconnect ? { id: target } : {}) });
   } catch (e) {
     const msg = (e as Error).message;
     const code = e instanceof AccountError ? e.code : undefined;
     if (code === 'no_client') {
       io.error('No OAuth client is configured yet. Finish the setup in the multiple-gmail app (the wizard) first.');
-    } else if (code === 'alias_exists') {
-      io.error(`Account "${alias}" already exists. Use: accounts reconnect ${alias}`);
+    } else if (code === 'name_exists') {
+      io.error(`${msg} To re-authorize it use: accounts reconnect "${label}"`);
     } else io.error(msg);
     return EXIT_USER_ERROR;
   }
@@ -170,14 +174,14 @@ async function connect(alias: string, email: string | undefined, reconnect: bool
   await io.openUrl(started.url).catch(() => {});
   try {
     const acct = await started.done;
-    if (reconnect) clearGmailCache(acct.alias);
-    io.log(`${reconnect ? 'Reconnected' : 'Connected'} ${acct.alias} (${acct.email})`);
+    if (reconnect) clearGmailCache(acct.id);
+    io.log(`${reconnect ? 'Reconnected' : 'Connected'} ${acct.name} (${acct.email})`);
     return EXIT_OK;
   } catch (e) {
     if (e instanceof AuthFlowError && e.code === 'admin_blocked') {
       const client = await loadClient().catch(() => null);
       io.error(ADMIN_STEPS(client?.clientId ?? '(unknown)'));
-    } else io.error(`Could not connect ${alias}: ${(e as Error).message}`);
+    } else io.error(`Could not connect ${label}: ${(e as Error).message}`);
     return EXIT_USER_ERROR;
   }
 }
@@ -192,65 +196,81 @@ async function accounts(args: string[], io: CliIo): Promise<number> {
       io.log('No accounts connected');
       return EXIT_OK;
     }
-    for (const [alias, a] of entries) {
-      io.log(`${alias}${cfg.defaultAccount === alias ? ' (default)' : ''}  ${a.email}`);
+    for (const [id, a] of entries) {
+      io.log(`${a.name}${cfg.defaultAccount === id ? ' (default)' : ''}  ${a.email}`);
     }
     return EXIT_OK;
   }
   if (sub === 'add') {
-    const aliasFlag = flags.get('--alias');
-    if (typeof aliasFlag !== 'string') {
-      io.error('Usage: accounts add --alias X [--email Y]');
+    // --alias is the older spelling.
+    const nameFlag = flags.get('--name') ?? flags.get('--alias');
+    if (typeof nameFlag !== 'string') {
+      io.error('Usage: accounts add --name X [--email Y]');
       return EXIT_USER_ERROR;
     }
-    const alias = aliasOrError(aliasFlag, io);
-    if (!alias) return EXIT_USER_ERROR;
-    if ((await loadConfig()).accounts[alias]) {
-      io.error(`Account "${alias}" already exists. Use: accounts reconnect ${alias}`);
+    const cfg = await loadConfig();
+    let name: string;
+    try {
+      name = validateName(nameFlag, cfg);
+    } catch (e) {
+      if (!(e instanceof NameError)) throw e;
+      const taken = e.code === 'taken' ? Object.values(cfg.accounts).find((a) => sameName(a.name, nameFlag)) : undefined;
+      io.error(taken ? `${e.message} To re-authorize it use: accounts reconnect "${taken.name}"` : e.message);
       return EXIT_USER_ERROR;
     }
     const email = flags.get('--email');
-    return connect(alias, typeof email === 'string' ? email : undefined, false, io);
+    return connect(name, name, typeof email === 'string' ? email : undefined, false, io);
   }
   if (sub === 'reconnect') {
     if (!positional[0]) {
       io.error('Usage: accounts reconnect X');
       return EXIT_USER_ERROR;
     }
-    const alias = aliasOrError(positional[0], io);
-    if (!alias) return EXIT_USER_ERROR;
-    if (!(await loadConfig()).accounts[alias]) {
-      io.error(`Unknown account "${alias}".`);
+    const id = await resolveOrError(positional[0], io);
+    if (!id) return EXIT_USER_ERROR;
+    const acct = getAccount(await loadConfig(), id);
+    return connect(id, acct?.name ?? id, undefined, true, io);
+  }
+  if (sub === 'rename') {
+    if (!positional[0] || !positional[1]) {
+      io.error('Usage: accounts rename X NEW (quote names with spaces)');
       return EXIT_USER_ERROR;
     }
-    return connect(alias, undefined, true, io);
+    const id = await resolveOrError(positional[0], io);
+    if (!id) return EXIT_USER_ERROR;
+    const before = getAccount(await loadConfig(), id)?.name ?? id;
+    try {
+      const after = await renameAccount(id, positional.slice(1).join(' '));
+      io.log(`Renamed "${before}" to "${after.name}".`);
+      return EXIT_OK;
+    } catch (e) {
+      io.error((e as Error).message);
+      return EXIT_USER_ERROR;
+    }
   }
   if (sub === 'remove') {
     if (!positional[0]) {
       io.error('Usage: accounts remove X [--yes]');
       return EXIT_USER_ERROR;
     }
-    const alias = aliasOrError(positional[0], io);
+    const alias = await resolveOrError(positional[0], io);
     if (!alias) return EXIT_USER_ERROR;
-    if (!(await loadConfig()).accounts[alias]) {
-      io.error(`Unknown account "${alias}".`);
-      return EXIT_USER_ERROR;
-    }
+    const name = getAccount(await loadConfig(), alias)?.name ?? alias;
     if (flags.get('--yes') !== true && !io.isTty) {
       io.error('Use --yes to confirm removal in non-interactive mode.');
       return EXIT_USER_ERROR;
     }
     if (flags.get('--yes') !== true) {
-      const answer = (await io.confirm('Type the alias to confirm: ')).trim().toLowerCase();
-      if (answer !== alias) {
-        io.error('Cancelled: the alias did not match.');
+      const answer = await io.confirm(`Type the account name (${name}) to confirm: `);
+      if (!sameName(answer, name)) {
+        io.error('Cancelled: the name did not match.');
         return EXIT_USER_ERROR;
       }
     }
     try {
       const { revoked } = await removeAccount(alias);
       clearGmailCache(alias);
-      io.log(`Removed ${alias}.`);
+      io.log(`Removed ${name}.`);
       io.log(
         revoked
           ? 'Google access was revoked.'
@@ -259,7 +279,7 @@ async function accounts(args: string[], io: CliIo): Promise<number> {
       return EXIT_OK;
     } catch (e) {
       const msg = (e as Error).message;
-      io.error(e instanceof AccountError && e.code === 'unknown_alias' ? `Unknown account "${alias}".` : msg);
+      io.error(e instanceof AccountError && e.code === 'unknown_account' ? `Unknown account "${name}".` : msg);
       return EXIT_USER_ERROR;
     }
   }
@@ -270,8 +290,10 @@ async function accounts(args: string[], io: CliIo): Promise<number> {
 export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<number> {
   const [cmd, ...rest] = argv;
   try {
-    if (cmd === undefined || cmd === '--minimized') {
-      return await (io.startLocal ?? runLocalMode)({ openBrowser: cmd === undefined });
+    const local = new Set(['--minimized', '--print-url']);
+    if (argv.length <= 2 && argv.every((a) => local.has(a)) && new Set(argv).size === argv.length) {
+      const printUrl = argv.includes('--print-url');
+      return await (io.startLocal ?? runLocalMode)({ openBrowser: argv.length === 0, printUrl });
     }
     if (cmd === '--version' || cmd === '-v') {
       io.log(VERSION);

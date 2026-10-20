@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { gmail } from '@googleapis/gmail';
 import { CodeChallengeMethod, OAuth2Client } from 'google-auth-library';
 import { AccountError, REVOKE_URL, type ConnectedAccount } from './accounts.js';
-import { loadConfig, saveConfig, validateAlias } from './config.js';
+import { findAccount, getAccount, loadConfig, NameError, newAccountId, sameName, saveConfig, validateId, validateName } from './config.js';
 import { loadClient, saveToken, type OAuthClient } from './secrets.js';
 
 export type { ConnectedAccount } from './accounts.js';
@@ -34,12 +34,12 @@ export class AuthFlowError extends Error {
 }
 
 export function beginAuth(opts: {
-  alias: string;
+  id: string;
   client: OAuthClient;
   redirectUri: string;
   loginHint?: string;
 }): { url: string; state: string; codeVerifier: string } {
-  validateAlias(opts.alias);
+  validateId(opts.id);
   const state = randomBytes(32).toString('base64url');
   const codeVerifier = randomBytes(32).toString('base64url');
   const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
@@ -82,6 +82,8 @@ export type LoopbackOptions = {
   loginHint?: string;
   lang?: 'en' | 'tr';
   reconnect?: boolean;
+  // New account: the id to store it under (generated when omitted). Reconnect: the exact id to reconnect.
+  id?: string;
   deps?: LoopbackDeps;
 };
 
@@ -250,7 +252,9 @@ function sendPlain(res: ServerResponse, status: number): void {
 }
 
 type CompleteArgs = {
-  alias: string;
+  id: string;
+  // Display name for a new account (a reconnect keeps the stored name).
+  name: string;
   reconnect: boolean;
   client: OAuthClient;
   codeVerifier: string;
@@ -266,7 +270,7 @@ type CompleteArgs = {
 
 // Shared by the loopback (local) and web (remote) flows: exchange the code, check the grant, and save the account.
 function completeAuth(c: CompleteArgs): (code: string) => Promise<ConnectedAccount> {
-  const { alias: a, client, codeVerifier, redirectUri, exchangeCode, getProfileEmail, doFetch } = c;
+  const { id: a, name, client, codeVerifier, redirectUri, exchangeCode, getProfileEmail, doFetch } = c;
   return async (code: string): Promise<ConnectedAccount> => {
     const tokens = await exchangeCode({ client, code, codeVerifier, redirectUri });
     if (!tokens.refreshToken) {
@@ -293,18 +297,21 @@ function completeAuth(c: CompleteArgs): (code: string) => Promise<ConnectedAccou
       throw new Error(message);
     };
     if (c.cancelled()) throw new Error('Google sign-in timed out.');
-    const current = now.accounts[a];
+    const current = getAccount(now, a);
     if (c.reconnect) {
-      if (!current) return reject(`No account named "${a}" to reconnect.`);
+      if (!current) return reject(`No account "${name}" to reconnect.`);
       if (!sameEmail(current.email, email)) {
-        return reject(`Signed in as ${email} but this alias belongs to ${current.email}`);
+        return reject(`Signed in as ${email} but the account "${current.name}" belongs to ${current.email}`);
       }
     } else if (current) {
-      return reject(`Alias already exists, use Reconnect: "${a}".`);
+      return reject(`The account "${current.name}" already exists, use Reconnect.`);
     }
     for (const [other, entry] of Object.entries(now.accounts)) {
       if (other !== a && sameEmail(entry.email, email)) {
-        return reject(`This Google account (${email}) is already connected as alias ${other}.`);
+        return reject(`This Google account (${email}) is already connected as "${entry.name}".`);
+      }
+      if (!c.reconnect && other !== a && (sameName(entry.name, name) || sameName(other, name))) {
+        return reject(`An account named "${entry.name}" already exists.`);
       }
     }
 
@@ -315,24 +322,42 @@ function completeAuth(c: CompleteArgs): (code: string) => Promise<ConnectedAccou
       ...(typeof tokens.expiryDate === 'number' ? { expiryDate: tokens.expiryDate } : {}),
       scope: tokens.scope ?? GMAIL_SCOPE,
     });
-    now.accounts[a] = { email, addedAt: current?.addedAt ?? new Date().toISOString() };
+    const finalName = current?.name ?? name;
+    now.accounts[a] = { name: finalName, email, addedAt: current?.addedAt ?? new Date().toISOString() };
     await saveConfig(now);
-    return { alias: a, email };
+    return { id: a, name: finalName, email };
   };
 }
 
 // Checks shared by both flows before a sign-in starts.
-async function prepareAuth(alias: string, opts: LoopbackOptions) {
-  const a = validateAlias(alias);
+// `target` is the new display name, or (reconnect) a name, email or id of an existing account.
+async function prepareAuth(target: string, opts: LoopbackOptions) {
   const deps = opts.deps ?? {};
   const cfg = await loadConfig();
-  const existing = cfg.accounts[a];
-  if (opts.reconnect && !existing) throw new AccountError('unknown_alias', `No account named "${a}" to reconnect.`);
-  if (!opts.reconnect && existing) throw new AccountError('alias_exists', `Alias already exists, use Reconnect: "${a}".`);
+  let a: string;
+  let name: string;
+  let existing;
+  if (opts.reconnect) {
+    const found = opts.id !== undefined ? validateId(opts.id) : findAccount(cfg, target);
+    existing = found ? getAccount(cfg, found) : undefined;
+    if (!found || !existing) throw new AccountError('unknown_account', `No account "${target}" to reconnect.`);
+    a = found;
+    name = existing.name;
+  } else {
+    try {
+      name = validateName(target, cfg);
+    } catch (e) {
+      if (!(e instanceof NameError)) throw e;
+      throw new AccountError(e.code === 'taken' ? 'name_exists' : 'invalid_name', e.message);
+    }
+    a = validateId(opts.id ?? newAccountId());
+    if (getAccount(cfg, a)) throw new AccountError('name_exists', `An account with id "${a}" already exists.`);
+  }
   const client = await (deps.loadClient ?? loadClient)();
   if (!client) throw new AccountError('no_client', 'No OAuth client has been uploaded yet. Upload the OAuth client JSON first.');
   return {
     a,
+    name,
     client,
     existing,
     lang: opts.lang ?? cfg.language,
@@ -355,10 +380,10 @@ function callbackError(error: string): AuthFlowError {
 }
 
 export async function startLoopbackAuth(
-  alias: string,
+  target: string,
   opts: LoopbackOptions = {},
-): Promise<{ url: string; done: Promise<ConnectedAccount> }> {
-  const { a, client, existing, lang, exchangeCode, getProfileEmail, timeoutMs, doFetch } = await prepareAuth(alias, opts);
+): Promise<{ url: string; id: string; done: Promise<ConnectedAccount> }> {
+  const { a, name, client, existing, lang, exchangeCode, getProfileEmail, timeoutMs, doFetch } = await prepareAuth(target, opts);
 
   const server = createServer();
   await new Promise<void>((resolve, reject) => {
@@ -370,7 +395,7 @@ export async function startLoopbackAuth(
   });
   const { port } = server.address() as AddressInfo;
   const redirectUri = `http://127.0.0.1:${port}/callback`;
-  const auth = beginAuth({ alias: a, client, redirectUri, loginHint: opts.loginHint ?? existing?.email });
+  const auth = beginAuth({ id: a, client, redirectUri, loginHint: opts.loginHint ?? existing?.email });
 
   let settled = false;
   let resolveDone!: (v: ConnectedAccount) => void;
@@ -403,7 +428,8 @@ export async function startLoopbackAuth(
   timer.unref?.();
 
   const complete = completeAuth({
-    alias: a,
+    id: a,
+    name,
     reconnect: !!opts.reconnect,
     client,
     codeVerifier: auth.codeVerifier,
@@ -460,15 +486,15 @@ export async function startLoopbackAuth(
     );
   });
 
-  return { url: auth.url, done };
+  return { url: auth.url, id: a, done };
 }
 
 // ---------- web flow (remote mode) ----------
 
 export type WebAuthStart = (
-  alias: string,
+  target: string,
   opts?: Omit<LoopbackOptions, 'deps'>,
-) => Promise<{ url: string; done: Promise<ConnectedAccount> }>;
+) => Promise<{ url: string; id: string; done: Promise<ConnectedAccount> }>;
 
 type WebFlow = {
   lang: 'en' | 'tr';
@@ -488,9 +514,9 @@ export function createWebAuth(o: { redirectUri: string; deps?: LoopbackDeps }): 
 } {
   const flows = new Map<string, WebFlow>();
 
-  const startWebAuth: WebAuthStart = async (alias, opts = {}) => {
-    const p = await prepareAuth(alias, { ...opts, deps: o.deps });
-    const auth = beginAuth({ alias: p.a, client: p.client, redirectUri: o.redirectUri, loginHint: opts.loginHint ?? p.existing?.email });
+  const startWebAuth: WebAuthStart = async (target, opts = {}) => {
+    const p = await prepareAuth(target, { ...opts, deps: o.deps });
+    const auth = beginAuth({ id: p.a, client: p.client, redirectUri: o.redirectUri, loginHint: opts.loginHint ?? p.existing?.email });
     const key = createHash('sha256').update(auth.state, 'utf8').digest('hex');
     let settled = false;
     let resolveDone!: (v: ConnectedAccount) => void;
@@ -515,7 +541,8 @@ export function createWebAuth(o: { redirectUri: string; deps?: LoopbackDeps }): 
     timer.unref?.();
     const exchangeBound = Math.min(p.timeoutMs, 60_000);
     const complete = completeAuth({
-      alias: p.a,
+      id: p.a,
+      name: p.name,
       reconnect: !!opts.reconnect,
       client: p.client,
       codeVerifier: auth.codeVerifier,
@@ -546,7 +573,7 @@ export function createWebAuth(o: { redirectUri: string; deps?: LoopbackDeps }): 
     });
     // Always handled by the caller; avoid an unhandled rejection if it is not.
     done.catch(() => {});
-    return { url: auth.url, done };
+    return { url: auth.url, id: p.a, done };
   };
 
   async function handleCallback(q: URLSearchParams, res: ServerResponse): Promise<void> {

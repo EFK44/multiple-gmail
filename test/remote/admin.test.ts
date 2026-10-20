@@ -217,10 +217,11 @@ describe('remote admin', () => {
       method: 'POST',
       path: '/api/accounts',
       headers: { ...JSON_TYPE, Cookie: admin, Origin: 'http://localhost' },
-      body: JSON.stringify({ alias: 'alpha' }),
+      body: JSON.stringify({ name: 'İş Hesabı' }),
     });
     expect(start.status).toBe(200);
     const authUrl = new URL(JSON.parse(start.body).authUrl);
+    const id = JSON.parse(start.body).id as string;
     expect(authUrl.searchParams.get('redirect_uri')).toBe('http://localhost/oauth/google/callback');
     expect(authUrl.searchParams.get('code_challenge_method')).toBe('S256');
     const state = authUrl.searchParams.get('state') ?? '';
@@ -232,8 +233,8 @@ describe('remote admin', () => {
     expect(done.status).toBe(200);
     expect(seen.redirectUri).toBe('http://localhost/oauth/google/callback');
     expect(seen.codeVerifier?.length).toBeGreaterThan(40);
-    const status = await h.req({ path: '/api/accounts/alpha/status', headers: { Cookie: admin } });
-    expect(JSON.parse(status.body).status).toBe('connected');
+    const status = await h.req({ path: `/api/accounts/${id}/status`, headers: { Cookie: admin } });
+    expect(JSON.parse(status.body)).toMatchObject({ status: 'connected', name: 'İş Hesabı' });
     // The state is single use.
     const again = await h.req({ path: `/oauth/google/callback?state=${state}&code=c`, headers: { Cookie: cb.split(';')[0] } });
     expect(again.status).toBe(400);

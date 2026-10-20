@@ -105,7 +105,7 @@ describe('removeAccount', () => {
 
   it('rejects unknown and invalid aliases', async () => {
     await seed();
-    await expect(removeAccount('gamma', { fetch: fakeFetch(200, []) })).rejects.toThrow(/No account named "gamma"/);
-    await expect(removeAccount('../x', { fetch: fakeFetch(200, []) })).rejects.toThrow(/Invalid account alias/);
+    await expect(removeAccount('gamma', { fetch: fakeFetch(200, []) })).rejects.toThrow(/No account with id "gamma"/);
+    await expect(removeAccount('../x', { fetch: fakeFetch(200, []) })).rejects.toThrow(/Invalid account id/);
   });
 });

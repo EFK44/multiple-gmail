@@ -3,16 +3,16 @@ import type { AccountStatus } from '../core/accounts.js';
 // In-memory health of each account, shown in list_accounts and the setup UI.
 const accountStatus = new Map<string, AccountStatus>();
 
-export function getAccountStatus(alias: string): AccountStatus {
-  return accountStatus.get(alias) ?? 'ok';
+export function getAccountStatus(id: string): AccountStatus {
+  return accountStatus.get(id) ?? 'ok';
 }
 
-export function setAccountStatus(alias: string, status: AccountStatus): void {
-  accountStatus.set(alias, status);
+export function setAccountStatus(id: string, status: AccountStatus): void {
+  accountStatus.set(id, status);
 }
 
-export function reauthMessage(alias: string): string {
-  return `Account ${alias} needs re-authorization: open multiple-gmail and click Reconnect for ${alias}.`;
+export function reauthMessage(name: string): string {
+  return `Account ${name} needs re-authorization: open multiple-gmail and click Reconnect for ${name}.`;
 }
 
 type Details = { status?: number; reasons: string[]; text: string };
@@ -55,25 +55,26 @@ export function friendly(msg: string): Error {
 }
 
 // Maps a googleapis/gaxios failure to an error whose message tells the AI what to do. Never includes request data.
-export function toToolError(e: unknown, alias: string): Error {
+// `id` keys the status map; `name` (default: the id) is what the message shows.
+export function toToolError(e: unknown, id: string, name: string = id): Error {
   if (e instanceof Error && (e as Error & { mgFriendly?: boolean }).mgFriendly) return e;
   const d = details(e);
   const has = (r: string) => d.reasons.includes(r);
 
   if (has('invalid_grant') || /invalid_grant/.test(d.text)) {
-    setAccountStatus(alias, 'needs_reauth');
-    return friendly(reauthMessage(alias));
+    setAccountStatus(id, 'needs_reauth');
+    return friendly(reauthMessage(name));
   }
   if (d.status === 429 || has('rateLimitExceeded') || has('userRateLimitExceeded')) {
-    return friendly(`Gmail rate limit for ${alias}, retry in a minute.`);
+    return friendly(`Gmail rate limit for ${name}, retry in a minute.`);
   }
   if (
     (d.status === 403 && (has('insufficientPermissions') || /insufficient[^.]*scope/i.test(d.text))) ||
     d.status === 401
   ) {
-    setAccountStatus(alias, 'needs_reauth');
-    return friendly(reauthMessage(alias));
+    setAccountStatus(id, 'needs_reauth');
+    return friendly(reauthMessage(name));
   }
   const reason = d.text.trim() || 'unexpected error';
-  return friendly(`Gmail request failed for ${alias}: ${reason.slice(0, 300)}`);
+  return friendly(`Gmail request failed for ${name}: ${reason.slice(0, 300)}`);
 }

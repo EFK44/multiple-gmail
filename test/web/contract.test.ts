@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { saveConfig } from '../../src/core/config.js';
 import { createApi } from '../../src/http/api.js';
 import { tempHome } from '../http/helpers.js';
 
@@ -112,5 +113,19 @@ describe('wizard API contract', { timeout: 30000 }, () => {
     const api = wizardApi();
     expect((await api('GET', '/autostart')).json).toEqual({ supported: true, enabled: false });
     expect((await api('POST', '/autostart', { enabled: true })).json).toEqual({ supported: true, enabled: true });
+  });
+
+  it('accounts carry id, name, email, status; rename returns the new name', async () => {
+    await saveConfig({
+      port: 47110,
+      language: 'en',
+      defaultAccount: 'beta',
+      accounts: { beta: { email: 'you@example.com', addedAt: '2026-10-01T00:00:00.000Z' } },
+    });
+    const api = wizardApi();
+    const s = asObj((await api('GET', '/state')).json);
+    expect(s.accounts).toEqual([{ id: 'beta', name: 'beta', email: 'you@example.com', status: 'ok' }]);
+    const r = await api('POST', '/accounts/beta/rename', { name: 'Kişisel' });
+    expect(r.json).toEqual({ ok: true, id: 'beta', name: 'Kişisel' });
   });
 });

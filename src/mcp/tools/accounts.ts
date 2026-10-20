@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
+import { getAccount } from '../../core/config.js';
 import { getAccountStatus } from '../../gmail/errors.js';
 import { run, type Deps } from './util.js';
 
@@ -10,12 +11,12 @@ export function registerAccountTools(server: McpServer, deps: Deps): void {
       title: 'List accounts',
       description:
         'Multi-account Gmail. List the connected Gmail accounts. Every other tool takes an account param: pass an ' +
-        'alias or email from this list (or "all" where a tool allows it). Returns alias, email, status ' +
+        'account name or email from this list (or "all" where a tool allows it). Returns name, email, status ' +
         '(ok, needs_reauth or error) and addedAt, plus defaultAccount.',
       inputSchema: z.object({}),
       outputSchema: z.object({
         accounts: z.array(
-          z.object({ alias: z.string(), email: z.string(), status: z.string(), addedAt: z.string() }),
+          z.object({ name: z.string(), email: z.string(), status: z.string(), addedAt: z.string() }),
         ),
         defaultAccount: z.string().nullable(),
       }),
@@ -25,13 +26,13 @@ export function registerAccountTools(server: McpServer, deps: Deps): void {
       run(async () => {
         const cfg = await deps.loadConfig();
         return {
-          accounts: Object.entries(cfg.accounts).map(([alias, a]) => ({
-            alias,
+          accounts: Object.entries(cfg.accounts).map(([id, a]) => ({
+            name: a.name,
             email: a.email,
-            status: getAccountStatus(alias),
+            status: getAccountStatus(id),
             addedAt: a.addedAt,
           })),
-          defaultAccount: cfg.defaultAccount,
+          defaultAccount: cfg.defaultAccount ? (getAccount(cfg, cfg.defaultAccount)?.name ?? null) : null,
         };
       }),
   );

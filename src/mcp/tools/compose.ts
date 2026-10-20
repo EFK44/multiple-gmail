@@ -66,7 +66,7 @@ export function registerComposeTools(server: McpServer, deps: Deps): void {
     },
     async (args) =>
       run(() =>
-        oneAccount(deps, args.account, async ({ alias, api, email }) => {
+        oneAccount(deps, args.account, async ({ name, api, email }) => {
           const { rh, threadId } = await threading(api, email, args.replyToMessageId, undefined);
           const raw = await buildRaw({
             from: email,
@@ -85,7 +85,7 @@ export function registerComposeTools(server: McpServer, deps: Deps): void {
           });
           const tid = res.data.message?.threadId ?? threadId ?? '';
           return {
-            account: alias,
+            account: name,
             id: res.data.id ?? '',
             messageId: res.data.message?.id ?? '',
             threadId: tid,
@@ -131,7 +131,7 @@ export function registerComposeTools(server: McpServer, deps: Deps): void {
             'send_message needs draftId, or to with at least one recipient. To answer a message use reply.',
           );
         }
-        return oneAccount(deps, account, async ({ alias, api, email }) => {
+        return oneAccount(deps, account, async ({ name, api, email }) => {
           let data;
           if (draftId) {
             data = (await api.users.drafts.send({ userId: 'me', requestBody: { id: draftId } })).data;
@@ -153,7 +153,7 @@ export function registerComposeTools(server: McpServer, deps: Deps): void {
             ).data;
           }
           const tid = data.threadId ?? '';
-          return { account: alias, id: data.id ?? '', threadId: tid, labelIds: data.labelIds ?? [], viewUrl: viewUrl(email, tid) };
+          return { account: name, id: data.id ?? '', threadId: tid, labelIds: data.labelIds ?? [], viewUrl: viewUrl(email, tid) };
         });
       }),
   );
@@ -182,7 +182,7 @@ export function registerComposeTools(server: McpServer, deps: Deps): void {
     async (args) =>
       run(async () => {
         if (!args.body && !args.htmlBody) throw friendly('reply needs body (or htmlBody).');
-        return oneAccount(deps, args.account, async ({ alias, api, email }) => {
+        return oneAccount(deps, args.account, async ({ name, api, email }) => {
           const rh = await replyHeaders(api, args.messageId, email);
           const self = email.trim().toLowerCase();
           const computedTo = rh.to.filter((x) => addrOf(x) !== self);
@@ -216,7 +216,7 @@ export function registerComposeTools(server: McpServer, deps: Deps): void {
           });
           const tid = res.data.threadId ?? rh.threadId;
           return {
-            account: alias,
+            account: name,
             id: res.data.id ?? '',
             threadId: tid,
             labelIds: res.data.labelIds ?? [],

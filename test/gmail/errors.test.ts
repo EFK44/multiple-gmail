@@ -2,35 +2,35 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { friendly, getAccountStatus, setAccountStatus, toToolError } from '../../src/gmail/errors.js';
 
 beforeEach(() => {
-  setAccountStatus('personal', 'ok');
+  setAccountStatus('beta', 'ok');
 });
 
 describe('toToolError', () => {
   it('maps invalid_grant to a reconnect message and marks needs_reauth', () => {
-    const e = toToolError({ response: { data: { error: 'invalid_grant' } } }, 'personal');
-    expect(e.message).toContain('Reconnect for personal');
+    const e = toToolError({ response: { data: { error: 'invalid_grant' } } }, 'beta');
+    expect(e.message).toContain('Reconnect for beta');
     expect(e.message).toBe(
-      'Account personal needs re-authorization: open multiple-gmail and click Reconnect for personal.',
+      'Account beta needs re-authorization: open multiple-gmail and click Reconnect for beta.',
     );
-    expect(getAccountStatus('personal')).toBe('needs_reauth');
+    expect(getAccountStatus('beta')).toBe('needs_reauth');
   });
 
   it('detects invalid_grant in the error message', () => {
-    const e = toToolError(new Error('invalid_grant: Token has been expired or revoked.'), 'personal');
-    expect(e.message).toContain('Reconnect for personal');
-    expect(getAccountStatus('personal')).toBe('needs_reauth');
+    const e = toToolError(new Error('invalid_grant: Token has been expired or revoked.'), 'beta');
+    expect(e.message).toContain('Reconnect for beta');
+    expect(getAccountStatus('beta')).toBe('needs_reauth');
   });
 
   it('maps 429 and rateLimitExceeded', () => {
-    expect(toToolError({ response: { status: 429 } }, 'personal').message).toBe(
-      'Gmail rate limit for personal, retry in a minute.',
+    expect(toToolError({ response: { status: 429 } }, 'beta').message).toBe(
+      'Gmail rate limit for beta, retry in a minute.',
     );
     const r = toToolError(
       { code: 403, response: { status: 403, data: { error: { errors: [{ reason: 'rateLimitExceeded' }] } } } },
-      'personal',
+      'beta',
     );
     expect(r.message).toContain('rate limit');
-    expect(getAccountStatus('personal')).toBe('ok');
+    expect(getAccountStatus('beta')).toBe('ok');
   });
 
   it('maps 403 insufficient scope to reconnect', () => {
@@ -41,17 +41,17 @@ describe('toToolError', () => {
           data: { error: { message: 'Request had insufficient authentication scopes.', errors: [{ reason: 'insufficientPermissions' }] } },
         },
       },
-      'personal',
+      'beta',
     );
-    expect(e.message).toContain('Reconnect for personal');
-    expect(getAccountStatus('personal')).toBe('needs_reauth');
+    expect(e.message).toContain('Reconnect for beta');
+    expect(getAccountStatus('beta')).toBe('needs_reauth');
   });
 
   it('wraps other errors with the alias and leaves status alone', () => {
-    const e = toToolError({ response: { status: 404, data: { error: { message: 'Requested entity was not found.' } } } }, 'personal');
-    expect(e.message).toBe('Gmail request failed for personal: Requested entity was not found.');
-    expect(getAccountStatus('personal')).toBe('ok');
-    expect(toToolError('weird', 'personal').message).toContain('personal');
+    const e = toToolError({ response: { status: 404, data: { error: { message: 'Requested entity was not found.' } } } }, 'beta');
+    expect(e.message).toBe('Gmail request failed for beta: Requested entity was not found.');
+    expect(getAccountStatus('beta')).toBe('ok');
+    expect(toToolError('weird', 'beta').message).toContain('beta');
   });
 
   it('keeps already-friendly errors unchanged', () => {

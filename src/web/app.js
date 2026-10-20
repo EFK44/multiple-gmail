@@ -1,7 +1,9 @@
 // multiple-gmail setup wizard. Plain ES module, no dependencies.
 // CSP is "default-src 'self'": every node is built with createElement/textContent, never HTML strings.
 
-const ALIAS_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+// Account names: same rules as the server (src/core/config.ts validateName).
+const MAX_NAME = 40;
+const NAME_RE = /^[\p{L}\p{M}\p{N}\p{P}\p{S} ]+$/u;
 const POLL_MS = 1500;
 const POLL_LIMIT_MS = 6 * 60 * 1000;
 const MAX_FILE = 1024 * 1024;
@@ -37,7 +39,7 @@ const S = {
   fallback: {},
   state: null,
   screen: 'welcome',
-  // alias -> { status, reason?, message?, email?, clientId?, authUrl? }
+  // account id (or "new:<name>" until the server returns the id) -> { status, reason?, message?, email?, name?, clientId?, authUrl? }
   flows: new Map(),
   polls: new Map(),
   apiKey: null,
@@ -48,7 +50,7 @@ const S = {
   upload: null,
   guideDone: loadGuideDone(),
   openGuide: null,
-  form: { alias: '', email: '', touched: false },
+  form: { name: '', email: '', touched: false },
   sessionLost: false,
   wsOpen: false,
   keyError: null,
@@ -660,59 +662,76 @@ function uploadScreen() {
 
 // ---------- screen 4: accounts ----------
 
-function aliasProblem(raw) {
-  const a = raw.trim();
-  if (!a) return 'accounts.aliasErr.empty';
-  if (a.length > 32) return 'accounts.aliasErr.tooLong';
-  if (!ALIAS_RE.test(a)) return 'accounts.aliasErr.invalid';
-  if (a === 'all') return 'accounts.aliasErr.reserved';
-  if (accounts().some((x) => x.alias === a)) return 'accounts.aliasErr.taken';
+function normalizeName(raw) {
+  return raw.normalize('NFC').replace(/\s+/gu, ' ').trim();
+}
+
+// Case-insensitive under both Turkish and plain lowercasing, like the server.
+function sameName(a, b) {
+  const x = normalizeName(a);
+  const y = normalizeName(b);
+  return x.toLocaleLowerCase('tr-TR') === y.toLocaleLowerCase('tr-TR') || x.toLowerCase() === y.toLowerCase();
+}
+
+// selfId: the account being renamed (its own name is not "taken").
+function nameProblem(raw, selfId) {
+  const a = normalizeName(raw);
+  if (!a) return 'accounts.nameErr.empty';
+  if ([...a].length > MAX_NAME) return 'accounts.nameErr.tooLong';
+  if (!NAME_RE.test(a)) return 'accounts.nameErr.invalid';
+  if (sameName(a, 'all')) return 'accounts.nameErr.reserved';
+  if (accounts().some((x) => x.email.toLowerCase() === a.toLowerCase())) return 'accounts.nameErr.email';
+  if (accounts().some((x) => x.id !== selfId && (sameName(x.name, a) || sameName(x.id, a)))) return 'accounts.nameErr.taken';
   return null;
 }
 
-function stopPoll(alias) {
-  const p = S.polls.get(alias);
+function accountName(key) {
+  return S.flows.get(key)?.name ?? accounts().find((a) => a.id === key)?.name ?? key;
+}
+
+function stopPoll(id) {
+  const p = S.polls.get(id);
   if (p) clearTimeout(p.timer);
-  S.polls.delete(alias);
+  S.polls.delete(id);
 }
 
 function stopAllPolls() {
-  for (const alias of [...S.polls.keys()]) stopPoll(alias);
+  for (const id of [...S.polls.keys()]) stopPoll(id);
 }
 
-function pollStatus(alias) {
-  stopPoll(alias);
+function pollStatus(id) {
+  stopPoll(id);
   const started = Date.now();
   const entry = { timer: 0 };
-  S.polls.set(alias, entry);
+  S.polls.set(id, entry);
   const tick = async () => {
-    if (S.polls.get(alias) !== entry) return;
+    if (S.polls.get(id) !== entry) return;
     if (Date.now() - started > POLL_LIMIT_MS) {
-      S.polls.delete(alias);
-      S.flows.set(alias, { status: 'gaveup' });
+      S.polls.delete(id);
+      S.flows.set(id, { status: 'gaveup', name: S.flows.get(id)?.name });
       render();
       return announce(t('accounts.gaveUp'));
     }
     let r;
     try {
-      r = await api('GET', `/accounts/${encodeURIComponent(alias)}/status`);
+      r = await api('GET', `/accounts/${encodeURIComponent(id)}/status`);
     } catch (e) {
       if (e instanceof SessionLost) return;
       r = null;
     }
-    if (S.polls.get(alias) !== entry) return;
+    if (S.polls.get(id) !== entry) return;
     const status = r?.ok ? r.json.status : null;
     if (!status || status === 'pending') {
       entry.timer = setTimeout(tick, POLL_MS);
       return;
     }
-    S.polls.delete(alias);
-    const prev = S.flows.get(alias) ?? {};
-    S.flows.set(alias, { ...r.json, authUrl: prev.authUrl });
+    S.polls.delete(id);
+    const prev = S.flows.get(id) ?? {};
+    S.flows.set(id, { ...r.json, name: r.json.name ?? prev.name, authUrl: prev.authUrl });
     if (status === 'connected') {
       await refreshState().catch(() => {});
-      if (S.screen === 'accounts') S.form = { alias: '', email: '', touched: false };
-      announce(t('accounts.connected', { alias, email: r.json.email ?? '' }));
+      if (S.screen === 'accounts') S.form = { name: '', email: '', touched: false };
+      announce(t('accounts.connected', { name: r.json.name ?? accountName(id), email: r.json.email ?? '' }));
     } else if (status === 'failed') {
       announce(failText(r.json.reason));
     }
@@ -726,31 +745,37 @@ function failText(reason) {
   return t(`accounts.failed.${known.includes(reason) ? reason : 'unknown'}`);
 }
 
-async function startConnect(alias, email, reconnect) {
-  S.flows.set(alias, { status: 'starting' });
+// New account: target is the display name. Reconnect: target is the account id.
+async function startConnect(target, email, reconnect) {
+  const name = reconnect ? accountName(target) : normalizeName(target);
+  // Until the server answers with the id, a new account's flow lives under a temporary key.
+  const temp = reconnect ? target : `new:${name}`;
+  S.flows.set(temp, { status: 'starting', name });
   render();
   let r;
   try {
     r = reconnect
-      ? await api('POST', `/accounts/${encodeURIComponent(alias)}/reconnect`, {})
-      : await api('POST', '/accounts', email ? { alias, email } : { alias });
+      ? await api('POST', `/accounts/${encodeURIComponent(target)}/reconnect`, {})
+      : await api('POST', '/accounts', email ? { name, email } : { name });
   } catch (e) {
     if (e instanceof SessionLost) return;
-    S.flows.set(alias, { status: 'error-start', message: e.message });
+    S.flows.set(temp, { status: 'error-start', message: e.message, name });
     render();
     return announce(e.message);
   }
-  if (!r.ok || typeof r.json.authUrl !== 'string') {
+  if (!r.ok || typeof r.json.authUrl !== 'string' || typeof r.json.id !== 'string') {
     const text = serverError(r);
-    S.flows.set(alias, { status: 'error-start', message: text });
+    S.flows.set(temp, { status: 'error-start', message: text, name });
     render();
     return announce(text);
   }
+  const id = r.json.id;
+  if (temp !== id) S.flows.delete(temp);
   window.open(r.json.authUrl, '_blank', 'noopener');
-  S.flows.set(alias, { status: 'pending', authUrl: r.json.authUrl });
+  S.flows.set(id, { status: 'pending', authUrl: r.json.authUrl, name });
   render();
   announce(t('accounts.waiting'));
-  pollStatus(alias);
+  pollStatus(id);
 }
 
 function workspaceSteps(clientId) {
@@ -772,9 +797,9 @@ function workspaceSteps(clientId) {
   );
 }
 
-// The status block for one alias's sign-in, shared by the accounts screen and the dashboard.
-function flowStatus(alias) {
-  const f = S.flows.get(alias);
+// The status block for one account's sign-in, shared by the accounts screen and the dashboard.
+function flowStatus(key) {
+  const f = S.flows.get(key);
   if (!f) return null;
   if (f.status === 'starting') return msg('info', t('common.working'));
   if (f.status === 'pending') {
@@ -786,7 +811,7 @@ function flowStatus(alias) {
         : null,
     );
   }
-  if (f.status === 'connected') return msg('ok', t('accounts.connected', { alias, email: f.email ?? '' }));
+  if (f.status === 'connected') return msg('ok', t('accounts.connected', { name: f.name ?? accountName(key), email: f.email ?? '' }));
   if (f.status === 'gaveup') return msg('error', t('accounts.gaveUp'));
   if (f.status === 'error-start') return msg('error', f.message);
   if (f.status === 'failed') {
@@ -804,29 +829,28 @@ function badge(status) {
 
 function accountsScreen() {
   const f = S.form;
-  const problem = f.touched ? aliasProblem(f.alias) : null;
+  const problem = f.touched ? nameProblem(f.name) : null;
   const busy = [...S.flows.values()].some((x) => x.status === 'starting');
 
-  const aliasInput = h('input', {
-    id: 'alias',
-    name: 'alias',
+  const nameInput = h('input', {
+    id: 'acct-name',
+    name: 'acct-name',
     type: 'text',
     autocomplete: 'off',
-    autocapitalize: 'none',
     spellcheck: 'false',
-    maxlength: '32',
+    maxlength: '80',
     required: true,
-    value: f.alias,
-    'aria-describedby': 'alias-hint alias-err',
+    value: f.name,
+    'aria-describedby': 'name-hint name-err',
     'aria-invalid': problem ? 'true' : 'false',
   });
-  const aliasErr = h('p', { id: 'alias-err', class: 'field-err' }, problem ? t(problem) : '');
-  aliasInput.addEventListener('input', () => {
-    f.alias = aliasInput.value;
+  const nameErr = h('p', { id: 'name-err', class: 'field-err' }, problem ? t(problem) : '');
+  nameInput.addEventListener('input', () => {
+    f.name = nameInput.value;
     f.touched = true;
-    const p = aliasProblem(f.alias);
-    aliasErr.textContent = p ? t(p) : '';
-    aliasInput.setAttribute('aria-invalid', p ? 'true' : 'false');
+    const p = nameProblem(f.name);
+    nameErr.textContent = p ? t(p) : '';
+    nameInput.setAttribute('aria-invalid', p ? 'true' : 'false');
   });
   const emailInput = h('input', {
     id: 'email',
@@ -846,10 +870,10 @@ function accountsScreen() {
     h(
       'div',
       { class: 'field' },
-      h('label', { for: 'alias' }, t('accounts.aliasLabel')),
-      h('p', { id: 'alias-hint', class: 'field-hint' }, t('accounts.aliasHint')),
-      aliasInput,
-      aliasErr,
+      h('label', { for: 'acct-name' }, t('accounts.nameLabel')),
+      h('p', { id: 'name-hint', class: 'field-hint' }, t('accounts.nameHint')),
+      nameInput,
+      nameErr,
     ),
     h(
       'div',
@@ -863,19 +887,18 @@ function accountsScreen() {
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     f.touched = true;
-    const p = aliasProblem(f.alias);
+    const p = nameProblem(f.name);
     if (p) {
       render();
-      document.getElementById('alias')?.focus();
+      document.getElementById('acct-name')?.focus();
       return announce(t(p));
     }
-    const alias = f.alias.trim();
-    f.alias = alias;
-    startConnect(alias, f.email.trim() || undefined, false);
+    f.name = normalizeName(f.name);
+    startConnect(f.name, f.email.trim() || undefined, false);
   });
 
-  // Flows for aliases that are not yet saved accounts (new connections in progress or failed).
-  const known = new Set(accounts().map((a) => a.alias));
+  // Flows for accounts that are not yet saved (new connections in progress or failed).
+  const known = new Set(accounts().map((a) => a.id));
   const loose = [...S.flows.keys()].filter((a) => !known.has(a) || S.flows.get(a).status !== 'connected');
 
   const list = accounts().length
@@ -883,7 +906,7 @@ function accountsScreen() {
         'ul',
         { class: 'acct-list' },
         accounts().map((a) =>
-          h('li', {}, h('span', { class: 'acct-alias' }, a.alias), h('span', { class: 'acct-email' }, a.email), badge(a.status)),
+          h('li', {}, h('span', { class: 'acct-alias' }, a.name), h('span', { class: 'acct-email' }, a.email), badge(a.status)),
         ),
       )
     : h('p', { class: 'empty' }, t('accounts.empty'));
@@ -1181,22 +1204,41 @@ function aiScreen() {
 
 // ---------- dialog ----------
 
-function openDialog({ title, body, confirmLabel, danger, requireText, onConfirm, trigger }) {
+// requireText: the user must type this (compared like account names) to enable the button.
+// edit: { label, value, problem(value) -> i18n key | null } shows an editable field; onConfirm gets its value.
+function openDialog({ title, body, confirmLabel, danger, requireText, edit, onConfirm, trigger }) {
   const dlg = document.getElementById('dialog');
-  const confirmBtn = h('button', { type: 'button', class: `btn ${danger ? 'btn-danger' : 'btn-primary'}`, id: 'dialog-confirm', disabled: Boolean(requireText) }, confirmLabel);
+  const confirmBtn = h('button', { type: 'button', class: `btn ${danger ? 'btn-danger' : 'btn-primary'}`, id: 'dialog-confirm', disabled: Boolean(requireText || edit) }, confirmLabel);
   const cancelBtn = h('button', { type: 'button', class: 'btn btn-quiet', id: 'dialog-cancel', onclick: () => dlg.close() }, t('common.cancel'));
   let input = null;
+  let field = null;
   if (requireText) {
     input = h('input', { type: 'text', id: 'dialog-input', autocomplete: 'off', autocapitalize: 'none', spellcheck: 'false' });
-    input.addEventListener('input', () => (confirmBtn.disabled = input.value.trim() !== requireText));
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !confirmBtn.disabled) confirmBtn.click();
-    });
+    input.addEventListener('input', () => (confirmBtn.disabled = !sameName(input.value, requireText)));
+    field = h('div', { class: 'field' }, h('label', { for: 'dialog-input' }, t('remove.typeLabel', { name: requireText })), input);
+  } else if (edit) {
+    input = h('input', { type: 'text', id: 'dialog-input', autocomplete: 'off', spellcheck: 'false', maxlength: '80', value: edit.value, 'aria-describedby': 'dialog-err' });
+    const err = h('p', { id: 'dialog-err', class: 'field-err' }, '');
+    const check = () => {
+      const p = edit.problem(input.value);
+      err.textContent = p ? t(p) : '';
+      input.setAttribute('aria-invalid', p ? 'true' : 'false');
+      confirmBtn.disabled = Boolean(p) || normalizeName(input.value) === normalizeName(edit.value);
+    };
+    input.addEventListener('input', check);
+    field = h('div', { class: 'field' }, h('label', { for: 'dialog-input' }, edit.label), input, err);
   }
+  input?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    // Without this the Enter also activates the trigger button that gets focus back on close, reopening the dialog.
+    e.preventDefault();
+    if (!confirmBtn.disabled) confirmBtn.click();
+  });
   confirmBtn.addEventListener('click', async () => {
     confirmBtn.disabled = true;
+    const value = input?.value ?? '';
     dlg.close();
-    await onConfirm();
+    await onConfirm(value);
   });
   dlg.setAttribute('aria-labelledby', 'dialog-title');
   dlg.setAttribute('aria-describedby', 'dialog-body');
@@ -1206,7 +1248,7 @@ function openDialog({ title, body, confirmLabel, danger, requireText, onConfirm,
       { class: 'dialog-inner' },
       h('h2', { id: 'dialog-title' }, title),
       h('p', { id: 'dialog-body' }, body),
-      input ? h('div', { class: 'field' }, h('label', { for: 'dialog-input' }, t('remove.typeLabel', { alias: requireText })), input) : null,
+      field,
       h('div', { class: 'actions' }, cancelBtn, confirmBtn),
     ),
   );
@@ -1216,31 +1258,55 @@ function openDialog({ title, body, confirmLabel, danger, requireText, onConfirm,
   };
   dlg.showModal();
   (input ?? cancelBtn).focus();
+  if (edit) input.select();
 }
 
 // ---------- screen 6: dashboard ----------
 
-async function removeAccountNow(alias) {
+async function removeAccountNow(id) {
+  const name = accountName(id);
   let r;
   try {
-    r = await api('DELETE', `/accounts/${encodeURIComponent(alias)}`);
+    r = await api('DELETE', `/accounts/${encodeURIComponent(id)}`);
   } catch (e) {
     if (!(e instanceof SessionLost)) announce(e.message);
     return;
   }
-  stopPoll(alias);
-  S.flows.delete(alias);
+  stopPoll(id);
+  S.flows.delete(id);
   const note = !r.ok
     ? { kind: 'error', raw: serverError(r) }
     : r.json.revoked === false
-      ? { kind: 'warn', key: 'remove.notRevoked', vars: { alias } }
-      : { kind: 'ok', key: 'remove.done', vars: { alias } };
+      ? { kind: 'warn', key: 'remove.notRevoked', vars: { name } }
+      : { kind: 'ok', key: 'remove.done', vars: { name } };
   await refreshState().catch(() => {});
   if (!reachable(S.screen)) go(defaultScreen());
   else {
     S.dashMsg = note;
     render(true);
   }
+  announce(msgText(note));
+}
+
+async function renameAccountNow(id, newName) {
+  const before = accountName(id);
+  let r;
+  try {
+    r = await api('POST', `/accounts/${encodeURIComponent(id)}/rename`, { name: normalizeName(newName) });
+  } catch (e) {
+    if (!(e instanceof SessionLost)) announce(e.message);
+    return;
+  }
+  const note = r.ok
+    ? { kind: 'ok', key: 'rename.done', vars: { old: before, name: r.json.name ?? normalizeName(newName) } }
+    : { kind: 'error', raw: serverError(r) };
+  if (r.ok) {
+    const f = S.flows.get(id);
+    if (f) S.flows.set(id, { ...f, name: r.json.name });
+  }
+  await refreshState().catch(() => {});
+  S.dashMsg = note;
+  render(true);
   announce(msgText(note));
 }
 
@@ -1276,44 +1342,63 @@ function dashboardScreen() {
     loadAutostart();
   }
   const rows = accounts().map((a) => {
-    const flow = S.flows.get(a.alias);
+    const flow = S.flows.get(a.id);
     const pending = flow && (flow.status === 'pending' || flow.status === 'starting');
     const status = pending ? 'pending' : flow?.status === 'failed' ? 'failed' : a.status;
     return [
       h(
         'tr',
         {},
-        h('th', { scope: 'row', 'data-label': t('dashboard.colAlias') }, a.alias),
+        h('th', { scope: 'row', 'data-label': t('dashboard.colName') }, a.name),
         h('td', { 'data-label': t('dashboard.colEmail') }, a.email),
         h('td', { 'data-label': t('dashboard.colStatus') }, badge(status)),
         h(
           'td',
           { class: 'cell-actions', 'data-label': t('dashboard.colActions') },
-          h('button', { type: 'button', class: 'btn btn-small btn-secondary', id: `reconnect-${a.alias}`, disabled: pending, onclick: () => startConnect(a.alias, undefined, true) }, t('dashboard.reconnect'), h('span', { class: 'sr-only' }, ` ${a.alias}`)),
+          h('button', { type: 'button', class: 'btn btn-small btn-secondary', id: `reconnect-${a.id}`, disabled: pending, onclick: () => startConnect(a.id, undefined, true) }, t('dashboard.reconnect'), h('span', { class: 'sr-only' }, ` ${a.name}`)),
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'btn btn-small btn-quiet',
+              id: `rename-${a.id}`,
+              onclick: (e) =>
+                openDialog({
+                  title: t('rename.title', { name: a.name }),
+                  body: t('rename.body'),
+                  confirmLabel: t('rename.confirm'),
+                  edit: { label: t('rename.label'), value: a.name, problem: (v) => nameProblem(v, a.id) },
+                  trigger: e.currentTarget,
+                  onConfirm: (v) => renameAccountNow(a.id, v),
+                }),
+            },
+            t('dashboard.rename'),
+            h('span', { class: 'sr-only' }, ` ${a.name}`),
+          ),
           h(
             'button',
             {
               type: 'button',
               class: 'btn btn-small btn-quiet btn-danger-quiet',
-              id: `remove-${a.alias}`,
+              id: `remove-${a.id}`,
               onclick: (e) =>
                 openDialog({
-                  title: t('remove.title', { alias: a.alias }),
+                  title: t('remove.title', { name: a.name }),
                   body: t('remove.body'),
                   confirmLabel: t('remove.confirm'),
                   danger: true,
-                  requireText: a.alias,
+                  requireText: a.name,
                   trigger: e.currentTarget,
-                  onConfirm: () => removeAccountNow(a.alias),
+                  onConfirm: () => removeAccountNow(a.id),
                 }),
             },
             t('dashboard.remove'),
-            h('span', { class: 'sr-only' }, ` ${a.alias}`),
+            h('span', { class: 'sr-only' }, ` ${a.name}`),
           ),
         ),
       ),
       flow && flow.status !== 'connected'
-        ? h('tr', { class: 'row-status' }, h('td', { colspan: '4' }, flowStatus(a.alias)))
+        ? h('tr', { class: 'row-status' }, h('td', { colspan: '4' }, flowStatus(a.id)))
         : null,
     ];
   });
@@ -1357,7 +1442,7 @@ function dashboardScreen() {
       h(
         'table',
         { class: 'acct-table' },
-        h('thead', {}, h('tr', {}, ['colAlias', 'colEmail', 'colStatus', 'colActions'].map((k) => h('th', { scope: 'col' }, t(`dashboard.${k}`))))),
+        h('thead', {}, h('tr', {}, ['colName', 'colEmail', 'colStatus', 'colActions'].map((k) => h('th', { scope: 'col' }, t(`dashboard.${k}`))))),
         h('tbody', {}, rows),
       ),
       needsReauth ? h('p', { class: 'note note-warn' }, t('dashboard.reconnectHint')) : null,

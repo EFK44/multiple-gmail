@@ -37,7 +37,7 @@
     "notCopied": "Not copied"
   },
   "errors": {
-    "session": "This page is no longer signed in. Close this tab and open multiple-gmail again to get a fresh page.",
+    "session": "This setup session has ended. Close this tab, then open multiple-gmail again (double-click it, or run it again) to get a fresh tab.",
     "network": "multiple-gmail is not responding. Check that its window is still open, then try again.",
     "server": "multiple-gmail reported a problem: {message}"
   },
@@ -47,7 +47,7 @@
     "planTitle": "What you will do",
     "plan1": "Create a free Google Cloud project. It gives you your own private key to Gmail.",
     "plan2": "Upload that key file to this page.",
-    "plan3": "Sign in to each Gmail account you want to use, and give it a short nickname.",
+    "plan3": "Sign in to each Gmail account you want to use, and give it a name you like.",
     "plan4": "Add multiple-gmail to your AI app.",
     "privacy": "Your sign-ins are stored encrypted on this computer only. multiple-gmail has no server of its own and nobody else sees your mail.",
     "keepOpen": "Keep the multiple-gmail window (the black window that opened with this page) open while you work here. Closing it stops this page.",
@@ -142,28 +142,29 @@
   },
   "accounts": {
     "title": "Connect your Gmail accounts",
-    "lead": "Give each account a short nickname. You will use it with your AI, for example: show me the newest mail in work.",
+    "lead": "Give each account a name you like. You will use it with your AI, for example: show me the newest mail in Work.",
     "formTitle": "Add an account",
-    "aliasLabel": "Nickname",
-    "aliasHint": "Small letters, numbers, - and _ only. Up to 32 characters. Examples: personal, work, shop.",
+    "nameLabel": "Account name",
+    "nameHint": "Any name you like, up to 40 characters, e.g. \"Kişisel\", \"İş Hesabı\", \"Work\".",
     "emailLabel": "Gmail address (optional)",
     "emailHint": "If you type it, Google picks this account for you on the sign-in page.",
     "connect": "Connect with Google",
     "waiting": "A Google sign-in tab opened. Finish signing in there, then come back to this tab. This page updates by itself.",
     "popupBlocked": "If no new tab opened, use this link:",
     "openSignIn": "Open Google sign-in",
-    "connected": "Connected {alias} ({email}).",
+    "connected": "Connected {name} ({email}).",
     "gaveUp": "No answer from Google after 6 minutes, so this page stopped waiting. Click Connect with Google to try again.",
     "listTitle": "Connected accounts",
     "empty": "No accounts yet. Add your first one above.",
     "more": "You can add as many accounts as you like, one at a time.",
     "next": "Next: connect your AI",
-    "aliasErr": {
-      "empty": "Type a nickname.",
-      "tooLong": "Use at most 32 characters.",
-      "invalid": "Use only small letters (a to z), numbers, - and _. Start with a letter or a number.",
-      "reserved": "\"all\" is reserved. Choose another nickname.",
-      "taken": "You already use this nickname."
+    "nameErr": {
+      "empty": "Type a name for this account.",
+      "tooLong": "Use at most 40 characters.",
+      "invalid": "Use letters, numbers, spaces and punctuation only.",
+      "reserved": "\"all\" is reserved. Choose another name.",
+      "taken": "You already have an account with this name.",
+      "email": "This is the email of a connected account. Choose another name."
     },
     "failed": {
       "user_denied": "Sign-in was cancelled or permission was not given. Try again, and on Google's permission screen tick the Gmail box.",
@@ -194,7 +195,7 @@
   },
   "ai": {
     "title": "Connect your AI app",
-    "lead": "Pick the app you use. You can connect more than one. Each app then sees all your Gmail accounts by their nicknames.",
+    "lead": "Pick the app you use. You can connect more than one. Each app then sees all your Gmail accounts by their names.",
     "already": "Already added.",
     "changed": "Changed file: {path}",
     "unsupported": "This works only on Windows.",
@@ -246,11 +247,12 @@
     "title": "Control panel",
     "lead": "Setup is done. Open multiple-gmail any time to come back here.",
     "accounts": "Accounts",
-    "colAlias": "Nickname",
+    "colName": "Name",
     "colEmail": "Email",
     "colStatus": "Status",
     "colActions": "Actions",
     "reconnect": "Reconnect",
+    "rename": "Rename",
     "remove": "Remove",
     "add": "Add an account",
     "reconnectHint": "An account that needs reconnect stopped working, usually because its Google sign-in expired. Click Reconnect and sign in again.",
@@ -270,12 +272,19 @@
     "aiDesc": "Add multiple-gmail to Claude, Gemini CLI or other apps."
   },
   "remove": {
-    "title": "Remove {alias}?",
+    "title": "Remove {name}?",
     "body": "multiple-gmail signs out of this account and forgets it. Your mail in Gmail stays as it is.",
-    "typeLabel": "Type {alias} to confirm",
+    "typeLabel": "Type {name} to confirm",
     "confirm": "Remove account",
-    "done": "{alias} removed.",
-    "notRevoked": "{alias} was removed from this computer, but Google could not be told. You can also remove access at myaccount.google.com/permissions."
+    "done": "{name} removed.",
+    "notRevoked": "{name} was removed from this computer, but Google could not be told. You can also remove access at myaccount.google.com/permissions."
+  },
+  "rename": {
+    "title": "Rename {name}",
+    "body": "Only the name changes. The account stays connected and your AI apps keep working.",
+    "label": "New name",
+    "confirm": "Save name",
+    "done": "{old} is now called {name}."
   },
   "remote": {
     "guideNote": "Server mode: for Application type choose Web application instead of Desktop app, and under Authorized redirect URIs add exactly this address:",

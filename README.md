@@ -104,16 +104,19 @@ Click Advanced, then Go to (your app name) (unsafe). If the Gmail permission che
 
 ## Add your accounts
 
-In the wizard, upload the JSON file, then type a short alias (for example `work`) and click the Google sign-in
-button. Repeat for each account. An alias uses lowercase letters, digits, `_` and `-`, and `all` is reserved.
+In the wizard, upload the JSON file, then type any name you like for the account (up to 40 characters, for example
+`Work` or `İş Hesabı`) and click the Google sign-in button. Repeat for each account. Names are matched without regard
+to case, and `all` is reserved. You can rename an account later in the control panel. Your AI can refer to an account
+by its name or by its email address.
 
 The same thing works from a terminal:
 
 ```sh
 multiple-gmail.exe accounts list
-multiple-gmail.exe accounts add --alias work
+multiple-gmail.exe accounts add --name "Work"
 multiple-gmail.exe accounts reconnect work
-multiple-gmail.exe accounts remove work
+multiple-gmail.exe accounts rename work "Shop"
+multiple-gmail.exe accounts remove "Shop"
 ```
 
 ## Connect your AI app
@@ -140,12 +143,16 @@ The last wizard step does most of this with a button. By hand:
 - **Google says the app is blocked by your administrator.** Your Google Workspace admin blocks unverified apps. They can
   mark your client as trusted in Admin console > Security > Access and data control > API controls > Manage third-party
   app access. The wizard shows these steps when it detects the block.
+- **"This setup link has expired or was already used".** Each setup link works once, and the browser uses it
+  right away. Close that tab and open multiple-gmail again: it opens a fresh tab (if it is already running, the new
+  tab may appear in another browser window). To get a link to paste by hand, run `multiple-gmail.exe --print-url`.
 - **Port in use.** The default port is 47110. Change `port` in `config.json` in the data folder (see
   `config.example.json`) and start again.
 - **Claude Desktop does not show the tools.** Fully quit Claude Desktop (also from the tray) and start it again. Check
   that `claude_desktop_config.json` contains `multiple-gmail`. The wizard keeps timestamped backups next to that
-  file, so you can restore one if something looks wrong. The Microsoft Store version of Claude Desktop keeps its
-  config in a different folder; the wizard looks in both places.
+  file, so you can restore one if something looks wrong. The Microsoft Store version of Claude Desktop (3.x) keeps its
+  config in `%LOCALAPPDATA%\Claude-Data\claude_<id>\claude_desktop_config.json`; the installer version uses
+  `%APPDATA%\Claude\claude_desktop_config.json`. The wizard writes to whichever of these exist.
 - **SmartScreen blocks the exe.** More info, then Run anyway (see Install).
 
 ## Where your data lives, and how to uninstall
@@ -155,7 +162,7 @@ change it). It holds `config.json` (no secrets), your encrypted OAuth client and
 
 To remove everything:
 
-1. Remove each account in the wizard (or `accounts remove <alias>`). This also asks Google to revoke the token.
+1. Remove each account in the wizard (or `accounts remove <name>`). This also asks Google to revoke the token.
 2. Delete the data folder.
 3. Check https://myaccount.google.com/permissions and remove your app if it is still listed.
 4. Delete the exe. If you turned on "Start with Windows", turn it off first in the wizard.

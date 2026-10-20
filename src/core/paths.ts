@@ -12,8 +12,8 @@ export function dataDir(): string {
   return join(homedir(), '.multiple-gmail');
 }
 
-export function tokenPath(alias: string): string {
-  return join(dataDir(), 'tokens', `${alias}.enc`);
+export function tokenPath(id: string): string {
+  return join(dataDir(), 'tokens', `${id}.enc`);
 }
 
 export function configPath(): string {

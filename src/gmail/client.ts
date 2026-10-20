@@ -1,6 +1,6 @@
 import { gmail, type gmail_v1 } from '@googleapis/gmail';
 import { OAuth2Client } from 'google-auth-library';
-import { loadConfig } from '../core/config.js';
+import { getAccount, loadConfig } from '../core/config.js';
 import { loadClient, loadToken, saveToken } from '../core/secrets.js';
 import { friendly, reauthMessage, setAccountStatus } from './errors.js';
 
@@ -39,14 +39,14 @@ export function clearGmailCache(alias?: string): void {
 
 async function build(alias: string): Promise<Entry> {
   const cfg = await loadConfig();
-  const account = cfg.accounts[alias];
+  const account = getAccount(cfg, alias);
   if (!account) throw friendly(`Unknown account ${alias}`);
   const client = await loadClient();
   if (!client) throw friendly('No Google OAuth client configured. Open multiple-gmail to finish setup.');
   const token = await loadToken(alias);
   if (!token) {
     setAccountStatus(alias, 'needs_reauth');
-    throw friendly(reauthMessage(alias));
+    throw friendly(reauthMessage(account.name));
   }
   const auth = new OAuth2Client({ clientId: client.clientId, clientSecret: client.clientSecret });
   auth.setCredentials({

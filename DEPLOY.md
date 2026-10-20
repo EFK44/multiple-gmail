@@ -187,7 +187,7 @@ are not interchangeable.) You can reuse the Google Cloud project from the deskto
    The guide shows this address with a copy button. Click Create, then download the JSON file.
 4. Upload the JSON in the guide. The server refuses a Desktop app client, or a Web client whose redirect URIs do not
    contain the address above.
-5. Connect your Gmail accounts. Each one gets a short nickname (alias). Google Workspace accounts may need the
+5. Connect your Gmail accounts. Each one gets a name you choose. Google Workspace accounts may need the
    administrator step shown in the guide.
 
 ## 5. Add the connector to your AI app

@@ -17,7 +17,8 @@ import { VERSION } from '../version.js';
 export type LocalServerDeps = Partial<ApiDeps> & {
   log?: (s: string) => void;
   logError?: (s: string) => void;
-  openUrl?: (url: string) => Promise<void>;
+  // Resolves false when the browser could not be opened (undefined counts as opened).
+  openUrl?: (url: string) => Promise<boolean | void>;
   now?: () => number;
 };
 
@@ -27,8 +28,19 @@ const KEEP_OPEN =
   'Keep this window open. Closing it stops the local server. ' +
   'Claude Desktop and other stdio clients start their own copy and do not need this window.';
 
+export type LocalModeOptions = {
+  openBrowser: boolean;
+  // --print-url: print a fresh single-use setup URL (for opening it by hand) instead of opening the browser.
+  printUrl?: boolean;
+};
+
+export const OPENING = 'Opening multiple-gmail in your browser...';
+export const OPEN_FAILED = 'Could not open your browser; run multiple-gmail --print-url to get a setup link.';
+export const HANDED_OFF =
+  'multiple-gmail is already running; opened a new tab in your browser. If you do not see it, check your other browser windows.';
+
 export async function startLocalServer(
-  opts: { port: number; openBrowser: boolean },
+  opts: LocalModeOptions & { port: number },
   deps: LocalServerDeps = {},
 ): Promise<LocalServer> {
   const log = deps.log ?? ((s: string) => console.log(s));
@@ -72,9 +84,16 @@ export async function startLocalServer(
 
   const url = launchUrl();
   log(`multiple-gmail ${VERSION}`);
-  log(`Setup: ${url}`);
+  // The URL is single use and the browser usually consumes it at once, so it is printed only on request.
+  if (opts.printUrl) log(`Setup (single use): ${url}`);
+  else if (opts.openBrowser) log(OPENING);
   log(KEEP_OPEN);
-  if (opts.openBrowser) void (deps.openUrl ?? defaultOpenUrl)(url).catch(() => {});
+  if (opts.openBrowser && !opts.printUrl) {
+    void (deps.openUrl ?? defaultOpenUrl)(url).then(
+      (opened) => opened === false && log(OPEN_FAILED),
+      () => log(OPEN_FAILED),
+    );
+  }
 
   let closing: Promise<void> | undefined;
   return {
@@ -92,7 +111,7 @@ export async function startLocalServer(
 
 // No-args / --minimized entry: start the server, or hand off to an already running instance.
 export async function runLocalMode(
-  opts: { openBrowser: boolean },
+  opts: LocalModeOptions,
   deps: LocalServerDeps = {},
 ): Promise<number> {
   const log = deps.log ?? ((s: string) => console.log(s));
@@ -100,7 +119,7 @@ export async function runLocalMode(
   const open = deps.openUrl ?? defaultOpenUrl;
   const { port } = await loadConfig();
   try {
-    const srv = await startLocalServer({ port, openBrowser: opts.openBrowser }, deps);
+    const srv = await startLocalServer({ port, openBrowser: opts.openBrowser, printUrl: opts.printUrl }, deps);
     process.once('SIGINT', () => {
       void srv.close().finally(() => process.exit(0));
     });
@@ -110,9 +129,18 @@ export async function runLocalMode(
     if (code !== 'EADDRINUSE' && code !== 'EACCES') throw e;
     const found = code === 'EADDRINUSE' ? await probeExistingInstance(port, getLocalApiKey) : { kind: 'foreign' as const };
     if (found.kind === 'launch') {
-      log('multiple-gmail is already running.');
-      log(`Setup: ${found.url}`);
-      if (opts.openBrowser) await open(found.url).catch(() => {});
+      if (opts.printUrl) {
+        log('multiple-gmail is already running.');
+        log(`Setup (single use): ${found.url}`);
+      } else if (opts.openBrowser) {
+        const opened = await open(found.url).catch(() => false);
+        if (opened === false) {
+          log('multiple-gmail is already running.');
+          log(OPEN_FAILED);
+        } else log(HANDED_OFF);
+      } else {
+        log('multiple-gmail is already running.');
+      }
       return 0;
     }
     logError(`Port ${port} is used by another program. Change "port" in ${configPath()}.`);

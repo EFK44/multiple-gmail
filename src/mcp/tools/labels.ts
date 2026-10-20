@@ -18,7 +18,7 @@ export function registerLabelTools(server: McpServer, deps: Deps): void {
         'Multi-account Gmail. List the labels of one account, or of every connected account with account "all". ' +
         'Returns id, name and type (system or user). Use the ids with label_thread and unlabel_thread.',
       inputSchema: z.object({
-        account: accountParam.describe('Alias or email from list_accounts. Use "all" only where noted. "all" is allowed here.'),
+        account: accountParam.describe('Account name or email from list_accounts. Use "all" only where noted. "all" is allowed here.'),
       }),
       annotations: READ_ONLY,
     },
@@ -52,14 +52,14 @@ export function registerLabelTools(server: McpServer, deps: Deps): void {
       },
       async (args) =>
         run(() =>
-          oneAccount(deps, args.account, async ({ alias, api, email }) => {
+          oneAccount(deps, args.account, async ({ name, api, email }) => {
             await api.users.threads.modify({
               userId: 'me',
               id: args.threadId,
               requestBody: add ? { addLabelIds: args.labelIds } : { removeLabelIds: args.labelIds },
             });
             return {
-              account: alias,
+              account: name,
               threadId: args.threadId,
               viewUrl: viewUrl(email, args.threadId),
               [add ? 'addedLabelIds' : 'removedLabelIds']: args.labelIds,

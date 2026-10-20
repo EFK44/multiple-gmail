@@ -84,7 +84,7 @@ describe('cli', () => {
     });
     const o = io();
     expect(await runCli(['accounts', 'add', '--alias', 'alpha'], o)).toBe(1);
-    expect(o.err.join('\n')).toContain('accounts reconnect alpha');
+    expect(o.err.join('\n')).toContain('accounts reconnect "alpha"');
   });
 
   it('gen-key prints 32 random bytes as base64', async () => {
@@ -114,13 +114,20 @@ describe('cli', () => {
 
   it('no args and --minimized start the local server, minimized without a browser', async () => {
     const calls: unknown[] = [];
-    const startLocal = async (opts: { openBrowser: boolean }) => {
+    const startLocal = async (opts: { openBrowser: boolean; printUrl: boolean }) => {
       calls.push(opts);
       return 0;
     };
     expect(await runCli([], io({ startLocal }))).toBe(0);
     expect(await runCli(['--minimized'], io({ startLocal }))).toBe(0);
-    expect(calls).toEqual([{ openBrowser: true }, { openBrowser: false }]);
+    expect(await runCli(['--print-url'], io({ startLocal }))).toBe(0);
+    expect(await runCli(['--minimized', '--print-url'], io({ startLocal }))).toBe(0);
+    expect(calls).toEqual([
+      { openBrowser: true, printUrl: false },
+      { openBrowser: false, printUrl: false },
+      { openBrowser: false, printUrl: true },
+      { openBrowser: false, printUrl: true },
+    ]);
   });
 
   it('remove on a non-TTY without --yes refuses', async () => {
@@ -136,5 +143,66 @@ describe('cli', () => {
     const list = io();
     await runCli(['accounts', 'list'], list);
     expect(list.out.join('\n')).toContain('alpha');
+  });
+});
+
+describe('cli free-form names', () => {
+  const seed = () =>
+    saveConfig({
+      port: 47110,
+      language: 'en',
+      defaultAccount: 'alpha',
+      accounts: {
+        alpha: { email: 'you@example.com', addedAt: '2026-10-01T00:00:00.000Z' },
+        k2k2k2k2k2k2: { name: 'İş Hesabı', email: 'work@example.com', addedAt: '2026-10-02T00:00:00.000Z' },
+      },
+    });
+
+  it('list shows display names', async () => {
+    await seed();
+    const o = io();
+    expect(await runCli(['accounts', 'list'], o)).toBe(0);
+    const text = o.out.join('\n');
+    expect(text).toContain('alpha (default)  you@example.com');
+    expect(text).toContain('İş Hesabı  work@example.com');
+    expect(text).not.toContain('k2k2k2k2k2k2');
+  });
+
+  it('rename by name, email or id; rejects duplicates and bad names', async () => {
+    await seed();
+    let o = io();
+    expect(await runCli(['accounts', 'rename', 'iş hesabı', 'Shop'], o)).toBe(0);
+    expect(o.out.join('\n')).toContain('Renamed "İş Hesabı" to "Shop".');
+    o = io();
+    expect(await runCli(['accounts', 'rename', 'you@example.com', 'Kişisel'], o)).toBe(0);
+    o = io();
+    expect(await runCli(['accounts', 'rename', 'kişisel', 'SHOP'], o)).toBe(1);
+    expect(o.err.join('\n')).toContain('already exists');
+    o = io();
+    expect(await runCli(['accounts', 'rename', 'kişisel', 'all'], o)).toBe(1);
+    expect(o.err.join('\n')).toContain('reserved');
+    o = io();
+    expect(await runCli(['accounts', 'rename', 'ghost', 'x'], o)).toBe(1);
+    expect(o.err.join('\n')).toContain('Unknown account "ghost". Available accounts: Kişisel, Shop.');
+    o = io();
+    expect(await runCli(['accounts', 'rename', 'k2k2k2k2k2k2'], o)).toBe(1);
+    expect(o.err.join('\n')).toContain('Usage: accounts rename');
+    const list = io();
+    await runCli(['accounts', 'list'], list);
+    expect(list.out.join('\n')).toContain('Kişisel (default)  you@example.com');
+  });
+
+  it('add with an existing name (any case) suggests reconnect', async () => {
+    await seed();
+    const o = io();
+    expect(await runCli(['accounts', 'add', '--name', 'İŞ HESABI'], o)).toBe(1);
+    expect(o.err.join('\n')).toContain('accounts reconnect "İş Hesabı"');
+  });
+
+  it('remove resolves names and confirms with the name on a TTY', async () => {
+    await seed();
+    const o = io({ isTty: true, confirm: async () => 'nope' });
+    expect(await runCli(['accounts', 'remove', 'İş Hesabı'], o)).toBe(1);
+    expect(o.err.join('\n')).toContain('Cancelled');
   });
 });

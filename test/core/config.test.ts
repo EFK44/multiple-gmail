@@ -2,7 +2,7 @@ import { mkdtemp, rm, mkdir, writeFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadConfig, saveConfig, validateAlias } from '../../src/core/config.js';
+import { loadConfig, saveConfig } from '../../src/core/config.js';
 import { configPath, dataDir, tokenPath } from '../../src/core/paths.js';
 import { writeFileAtomic } from '../../src/core/fsx.js';
 import { restoreTestHome } from '../setup.js';
@@ -15,23 +15,6 @@ beforeEach(async () => {
 afterEach(async () => {
   restoreTestHome();
   await rm(home, { recursive: true, force: true });
-});
-
-describe('validateAlias', () => {
-  it('lowercases and trims', () => {
-    expect(validateAlias('Alpha')).toBe('alpha');
-    expect(validateAlias('  Beta-1 ')).toBe('beta-1');
-  });
-  it('rejects bad aliases', () => {
-    expect(() => validateAlias('all')).toThrow(Error);
-    expect(() => validateAlias('şirket')).toThrow(Error);
-    expect(() => validateAlias('')).toThrow(Error);
-    expect(() => validateAlias('a'.repeat(33))).toThrow(Error);
-    expect(() => validateAlias('../x')).toThrow(Error);
-  });
-  it('accepts 32 chars', () => {
-    expect(validateAlias('a'.repeat(32))).toBe('a'.repeat(32));
-  });
 });
 
 describe('paths', () => {
@@ -51,7 +34,7 @@ describe('config', () => {
       port: 5000,
       language: 'tr' as const,
       defaultAccount: 'alpha',
-      accounts: { alpha: { email: 'you@example.com', addedAt: '2026-01-01T00:00:00.000Z' } },
+      accounts: { alpha: { name: 'Alpha Mail', email: 'you@example.com', addedAt: '2026-01-01T00:00:00.000Z' } },
     };
     await saveConfig(c);
     expect(await loadConfig()).toEqual(c);

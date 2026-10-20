@@ -37,7 +37,7 @@
     "notCopied": "Kopyalanmadı"
   },
   "errors": {
-    "session": "Bu sayfanın oturumu bitti. Sekmeyi kapat ve multiple-gmail'i yeniden açarak yeni bir sayfa al.",
+    "session": "Bu kurulum oturumu sona erdi. Bu sekmeyi kapat, sonra multiple-gmail'i yeniden aç (çift tıkla ya da yeniden çalıştır); yeni bir sekme açılır.",
     "network": "multiple-gmail yanıt vermiyor. Penceresinin hâlâ açık olduğunu kontrol et ve tekrar dene.",
     "server": "multiple-gmail bir sorun bildirdi (İngilizce): {message}"
   },
@@ -47,7 +47,7 @@
     "planTitle": "Neler yapacaksın",
     "plan1": "Ücretsiz bir Google Cloud projesi oluşturacaksın. Bu sana Gmail için kendine ait, özel bir anahtar verir.",
     "plan2": "Bu anahtar dosyasını bu sayfaya yükleyeceksin.",
-    "plan3": "Kullanmak istediğin her Gmail hesabına giriş yapıp ona kısa bir takma ad vereceksin.",
+    "plan3": "Kullanmak istediğin her Gmail hesabına giriş yapıp ona istediğin bir ad vereceksin.",
     "plan4": "multiple-gmail'i yapay zekâ uygulamana ekleyeceksin.",
     "privacy": "Girişlerin sadece bu bilgisayarda, şifrelenmiş olarak saklanır. multiple-gmail'in kendi sunucusu yoktur ve postalarını başka kimse görmez.",
     "keepOpen": "Burada çalışırken multiple-gmail penceresini (bu sayfayla birlikte açılan siyah pencere) açık tut. Kapatırsan bu sayfa da çalışmaz.",
@@ -142,28 +142,29 @@
   },
   "accounts": {
     "title": "Gmail hesaplarını bağla",
-    "lead": "Her hesaba kısa bir takma ad ver. Yapay zekâyla konuşurken bunu kullanacaksın, örneğin: is hesabındaki en yeni postaları göster.",
+    "lead": "Her hesaba istediğin bir ad ver. Yapay zekâyla konuşurken bunu kullanacaksın, örneğin: İş Hesabı içindeki en yeni postaları göster.",
     "formTitle": "Hesap ekle",
-    "aliasLabel": "Takma ad",
-    "aliasHint": "Sadece küçük harf, rakam, - ve _ kullan. En fazla 32 karakter. Türkçe harfler (ç, ğ, ı, ö, ş, ü) olmaz. Örnekler: kisisel, is, magaza.",
+    "nameLabel": "Hesap adı",
+    "nameHint": "İstediğin herhangi bir ad, en fazla 40 karakter. Örnekler: \"Kişisel\", \"İş Hesabı\", \"Mağaza\".",
     "emailLabel": "Gmail adresi (isteğe bağlı)",
     "emailHint": "Yazarsan Google giriş sayfasında bu hesabı senin için seçer.",
     "connect": "Google ile bağlan",
     "waiting": "Bir Google giriş sekmesi açıldı. Girişi orada bitir, sonra bu sekmeye geri dön. Bu sayfa kendiliğinden güncellenir.",
     "popupBlocked": "Yeni sekme açılmadıysa bu bağlantıyı kullan:",
     "openSignIn": "Google girişini aç",
-    "connected": "{alias} bağlandı ({email}).",
+    "connected": "{name} bağlandı ({email}).",
     "gaveUp": "6 dakikadır Google'dan yanıt gelmedi, bu yüzden sayfa beklemeyi bıraktı. Tekrar denemek için \"Google ile bağlan\" düğmesine tıkla.",
     "listTitle": "Bağlı hesaplar",
     "empty": "Henüz hesap yok. İlk hesabını yukarıdan ekle.",
     "more": "İstediğin kadar hesap ekleyebilirsin, her seferinde bir tane.",
     "next": "Sıradaki: yapay zekânı bağla",
-    "aliasErr": {
-      "empty": "Bir takma ad yaz.",
-      "tooLong": "En fazla 32 karakter kullan.",
-      "invalid": "Sadece küçük harf (a-z), rakam, - ve _ kullan. Türkçe harf kullanma. Bir harf ya da rakamla başla.",
-      "reserved": "\"all\" ayrılmış bir addır. Başka bir takma ad seç.",
-      "taken": "Bu takma adı zaten kullanıyorsun."
+    "nameErr": {
+      "empty": "Bu hesap için bir ad yaz.",
+      "tooLong": "En fazla 40 karakter kullan.",
+      "invalid": "Sadece harf, rakam, boşluk ve noktalama işaretleri kullan.",
+      "reserved": "\"all\" ayrılmış bir addır. Başka bir ad seç.",
+      "taken": "Bu adda bir hesabın zaten var.",
+      "email": "Bu, bağlı bir hesabın e-posta adresi. Başka bir ad seç."
     },
     "failed": {
       "user_denied": "Giriş iptal edildi ya da izin verilmedi. Tekrar dene ve Google'ın izin ekranında Gmail kutusunu işaretle.",
@@ -194,7 +195,7 @@
   },
   "ai": {
     "title": "Yapay zekâ uygulamanı bağla",
-    "lead": "Kullandığın uygulamayı seç. Birden fazlasını bağlayabilirsin. Her uygulama bütün Gmail hesaplarını takma adlarıyla görür.",
+    "lead": "Kullandığın uygulamayı seç. Birden fazlasını bağlayabilirsin. Her uygulama bütün Gmail hesaplarını adlarıyla görür.",
     "already": "Zaten eklenmiş.",
     "changed": "Değişen dosya: {path}",
     "unsupported": "Bu sadece Windows'ta çalışır.",
@@ -246,11 +247,12 @@
     "title": "Kontrol paneli",
     "lead": "Kurulum tamam. Buraya dönmek için multiple-gmail'i istediğin zaman açabilirsin.",
     "accounts": "Hesaplar",
-    "colAlias": "Takma ad",
+    "colName": "Ad",
     "colEmail": "E-posta",
     "colStatus": "Durum",
     "colActions": "İşlemler",
     "reconnect": "Yeniden bağla",
+    "rename": "Yeniden adlandır",
     "remove": "Kaldır",
     "add": "Hesap ekle",
     "reconnectHint": "\"Yeniden bağlanmalı\" yazan bir hesap çalışmayı bıraktı; genelde Google girişinin süresi dolduğu için. \"Yeniden bağla\" düğmesine tıkla ve tekrar giriş yap.",
@@ -270,12 +272,19 @@
     "aiDesc": "multiple-gmail'i Claude'a, Gemini CLI'ya ya da diğer uygulamalara ekle."
   },
   "remove": {
-    "title": "{alias} kaldırılsın mı?",
+    "title": "{name} kaldırılsın mı?",
     "body": "multiple-gmail bu hesaptan çıkış yapar ve onu unutur. Gmail'deki postaların olduğu gibi kalır.",
-    "typeLabel": "Onaylamak için {alias} yaz",
+    "typeLabel": "Onaylamak için {name} yaz",
     "confirm": "Hesabı kaldır",
-    "done": "{alias} kaldırıldı.",
-    "notRevoked": "{alias} bu bilgisayardan kaldırıldı ama Google'a haber verilemedi. Erişimi myaccount.google.com/permissions adresinden de kaldırabilirsin."
+    "done": "{name} kaldırıldı.",
+    "notRevoked": "{name} bu bilgisayardan kaldırıldı ama Google'a haber verilemedi. Erişimi myaccount.google.com/permissions adresinden de kaldırabilirsin."
+  },
+  "rename": {
+    "title": "Yeniden adlandır: {name}",
+    "body": "Sadece ad değişir. Hesap bağlı kalır ve yapay zekâ uygulamaların çalışmaya devam eder.",
+    "label": "Yeni ad",
+    "confirm": "Adı kaydet",
+    "done": "{old} hesabının yeni adı: {name}."
   },
   "remote": {
     "guideNote": "Sunucu modu: Uygulama türü olarak Masaüstü uygulaması yerine Web uygulaması seç ve Yetkili yönlendirme URI'leri altına tam olarak şu adresi ekle:",
