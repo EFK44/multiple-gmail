@@ -109,7 +109,7 @@
       "do1": "Open Audience. Under Publishing status, click Publish app, then Confirm.",
       "do2": "If Publish app is greyed out, hover over it to see what is missing. It is almost always the App domain fields on the Branding page (see the earlier step).",
       "do3": "The status should now say In production.",
-      "do4": "Google may say your app needs verification. You can ignore that: verification is for apps that other people use.",
+      "do4": "Google Cloud may show a yellow \"Your app requires verification\" banner. Ignore it: do not click Go to verification center and do not submit verification. Nothing else is needed, because the app works unverified for your own use.",
       "do5": "Prefer not to publish? You can stay in Testing: open Audience, add each Gmail address under Test users. Tokens then expire every 7 days and multiple-gmail shows Reconnect next to the account."
     },
     "aheadTitle": "Two screens you will see when you sign in later",

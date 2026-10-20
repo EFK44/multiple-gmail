@@ -109,7 +109,7 @@
       "do1": "\"Audience\" sayfasını aç. \"Publishing status\" altında \"Publish app\" düğmesine, sonra \"Confirm\" düğmesine tıkla.",
       "do2": "\"Publish app\" düğmesi gri ve tıklanamıyorsa üzerine gel, neyin eksik olduğunu gösterir. Neredeyse her zaman \"Branding\" sayfasındaki \"App domain\" alanlarıdır (önceki adıma bak).",
       "do3": "Durum artık \"In production\" (yayında) yazmalı.",
-      "do4": "Google uygulamanın doğrulanması gerektiğini söyleyebilir. Bunu boş verebilirsin: doğrulama, başka insanların kullandığı uygulamalar içindir.",
+      "do4": "Google Cloud sarı bir \"Your app requires verification\" (uygulamanın doğrulanması gerekiyor) uyarısı gösterebilir. Boş ver: \"Go to verification center\" düğmesine tıklama ve doğrulama başvurusu yapma. Yapman gereken başka bir şey yok, çünkü uygulama kendi kullanımın için doğrulanmadan çalışır.",
       "do5": "Yayınlamak istemezsen \"Testing\" modunda kalabilirsin: \"Audience\" sayfasını aç, her Gmail adresini \"Test users\" altına ekle. Bu durumda izinler 7 günde bir sona erer ve multiple-gmail hesabın yanında \"Yeniden bağla\" gösterir."
     },
     "aheadTitle": "Daha sonra giriş yaparken göreceğin iki ekran",

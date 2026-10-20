@@ -156,8 +156,15 @@ website now and then, so a name may differ slightly.
    type **Desktop app**. If you see a checkbox **Use this client for an AI-powered agent**, tick it. Click Create, then
    Download JSON and keep the file.
 7. **Publish the app.** Open Audience and click Publish app, then Confirm. If the button is disabled, hover over it:
-   it tells you what is missing, almost always the Branding fields from step 4. Google may say the app needs
-   verification; ignore that, verification is for apps that other people use.
+   it tells you what is missing, almost always the Branding fields from step 4. Afterwards Google Cloud shows a
+   yellow "Your app requires verification" banner and a [Verification Center](https://console.cloud.google.com/auth/verification).
+   **Do not submit the app for verification and ignore that banner.** Nothing else is needed.
+
+   Why: Gmail access is a restricted scope, and full verification of such an app is meant for apps that many other
+   people use ([restricted scope verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification)).
+   For personal use with your own client the app works unverified, for up to 100 users per OAuth client
+   ([about unverified apps](https://support.google.com/cloud/answer/13463073)). The only difference is the
+   "Google hasn't verified this app" screen when you sign in (see below).
 
    **Alternative without publishing:** stay in Testing mode and add every Gmail address you want to use under
    Audience > Test users. In Testing mode Google expires the sign-in every 7 days, so each account will show
@@ -213,6 +220,15 @@ The last wizard step does most of this with a button. By hand:
 
 ## Problems
 
+- **Branding verification issues / "The website of your home page URL ... is not registered to you".** Google shows
+  this when you submit branding verification for a home page on a domain you do not own, such as the shared
+  `efk44.github.io/multiple-gmail` pages. You do not need verification, so do not submit it and ignore the
+  [Verification Center](https://console.cloud.google.com/auth/verification) banner; the app works unverified
+  (see step 7 above). If you use your OWN domain for the branding pages and want the name and logo verified, first
+  prove ownership in [Google Search Console](https://search.google.com/search-console): Add property > URL prefix >
+  HTML file or meta tag. Wait 24 hours, then open the [Branding page](https://console.cloud.google.com/auth/branding),
+  choose "I have fixed the issues" and click Proceed. Users of the shared pages cannot prove ownership of that
+  domain and should simply not request verification.
 - **An account says "needs reconnect".** Google signed it out, most often because the app is still in Testing mode (7
   days) or you changed the account password. Click Reconnect in the wizard and sign in again.
 - **Google says the app is blocked by your administrator.** Your Google Workspace admin blocks unverified apps. They can
