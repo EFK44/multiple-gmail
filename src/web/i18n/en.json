@@ -33,7 +33,8 @@
     "working": "Working...",
     "newTab": "opens in a new tab",
     "mayDiffer": "Google changes its website from time to time, so a button or menu may have a slightly different name. Look for the closest match.",
-    "mayDifferShort": "Google changes its website from time to time, so a menu may have a slightly different name. Look for the closest match."
+    "mayDifferShort": "Google changes its website from time to time, so a menu may have a slightly different name. Look for the closest match.",
+    "notCopied": "Not copied"
   },
   "errors": {
     "session": "This page is no longer signed in. Close this tab and open multiple-gmail again to get a fresh page.",
@@ -234,7 +235,8 @@
       "title": "ChatGPT and claude.ai in the browser",
       "desc": "Websites cannot reach a program on your computer. To use them, multiple-gmail has to run on a server in server mode. The file DEPLOY.md in the project explains how."
     },
-    "next": "Go to the control panel"
+    "next": "Go to the control panel",
+    "backup": "Backup of the old file: {path}"
   },
   "dashboard": {
     "title": "Control panel",

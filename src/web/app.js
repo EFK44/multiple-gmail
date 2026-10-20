@@ -51,6 +51,7 @@ const S = {
   form: { alias: '', email: '', touched: false },
   sessionLost: false,
   wsOpen: false,
+  keyError: null,
   dashMsg: null,
 };
 
@@ -189,6 +190,7 @@ async function setLanguage(lang) {
   } catch {
     return;
   }
+  forgetKey();
   render();
   api('POST', '/language', { language: lang }).catch(() => {});
 }
@@ -214,27 +216,44 @@ async function copyText(text) {
   }
 }
 
+// A copy button plus a visible error line next to it (failures must not be announce-only).
 function copyButton(getText, label = t('common.copy')) {
   const btn = h('button', { type: 'button', class: 'btn btn-small btn-quiet' }, label);
+  const err = h('span', { class: 'copy-err', role: 'status' });
+  let timer = 0;
+  const show = (ok, text) => {
+    clearTimeout(timer);
+    btn.textContent = ok ? t('common.copied') : t('common.notCopied');
+    btn.classList.toggle('is-done', ok);
+    btn.classList.toggle('is-failed', !ok);
+    err.textContent = ok ? '' : text;
+    announce(ok ? t('common.copied') : text);
+    timer = setTimeout(() => {
+      btn.textContent = label;
+      btn.classList.remove('is-done', 'is-failed');
+    }, 3000);
+  };
   btn.addEventListener('click', async () => {
     let text;
     try {
       text = await getText();
     } catch (e) {
-      if (!(e instanceof SessionLost)) announce(e.message);
+      if (!(e instanceof SessionLost)) show(false, e.message);
       return;
     }
     const ok = await copyText(text);
-    const done = ok ? t('common.copied') : t('common.copyFailed');
-    announce(done);
-    btn.textContent = ok ? t('common.copied') : label;
-    btn.classList.toggle('is-done', ok);
-    setTimeout(() => {
-      btn.textContent = label;
-      btn.classList.remove('is-done');
-    }, 2000);
+    // The key is only kept in memory while it is shown on screen.
+    if (!S.showKey) S.apiKey = null;
+    show(ok, t('common.copyFailed'));
   });
-  return btn;
+  return h('span', { class: 'copy' }, btn, err);
+}
+
+// Called on every navigation and language switch so the real key never lingers on screen or in memory.
+function forgetKey() {
+  S.apiKey = null;
+  S.showKey = false;
+  S.keyError = null;
 }
 
 async function getApiKey() {
@@ -282,6 +301,7 @@ function screenFromHash() {
 
 function go(screen) {
   S.dashMsg = null;
+  forgetKey();
   if (location.hash === `#${screen}`) {
     S.screen = screen;
     render(true);
@@ -296,6 +316,7 @@ window.addEventListener('hashchange', () => {
   if (id === 'main') return;
   const next = screenFromHash();
   if (!next) return void history.replaceState(null, '', `#${S.screen}`);
+  forgetKey();
   S.screen = next;
   render(true);
 });
@@ -916,9 +937,24 @@ function card(id, titleKey, ...body) {
   return h('section', { class: 'ai-row', id: `ai-${id}`, 'aria-labelledby': `ai-${id}-title` }, h('h2', { id: `ai-${id}-title`, class: 'h3' }, t(titleKey)), ...body);
 }
 
-function writtenList(paths) {
-  if (!Array.isArray(paths) || paths.length === 0) return null;
-  return h('ul', { class: 'paths' }, paths.map((p) => h('li', {}, t('ai.changed', { path: p }))));
+// routes.ts returns written as [{ path, backup, created }] (backup is null when the file did not exist yet).
+function writtenList(written) {
+  if (!Array.isArray(written) || written.length === 0) return null;
+  return h(
+    'ul',
+    { class: 'paths' },
+    written.map((w) => {
+      const path = typeof w === 'string' ? w : w?.path;
+      const backup = typeof w === 'object' && w ? w.backup : null;
+      return h(
+        'li',
+        {},
+        t('ai.changed', { path: path ?? '' }),
+        backup ? h('br') : null,
+        backup ? t('ai.backup', { path: backup }) : null,
+      );
+    }),
+  );
 }
 
 function claudeDesktopCard(info) {
@@ -1005,8 +1041,9 @@ function httpCard(info) {
     id: 'toggle-key',
     'aria-pressed': String(S.showKey),
     onclick: async () => {
+      S.keyError = null;
       if (S.showKey) {
-        S.showKey = false;
+        forgetKey();
         return render();
       }
       try {
@@ -1014,7 +1051,10 @@ function httpCard(info) {
         S.showKey = true;
         render();
       } catch (e) {
-        if (!(e instanceof SessionLost)) announce(e.message);
+        if (e instanceof SessionLost) return;
+        S.keyError = e.message;
+        render();
+        announce(e.message);
       }
     },
   }, S.showKey ? t('ai.http.hideKey') : t('ai.http.showKey'));
@@ -1039,6 +1079,7 @@ function httpCard(info) {
       h('dd', {}, h('code', {}, S.showKey && S.apiKey ? S.apiKey : masked), copyButton(() => getApiKey())),
     ),
     h('div', { class: 'row-actions' }, toggle),
+    S.keyError ? msg('error', S.keyError) : null,
     h('p', { class: 'note note-quiet' }, S.showKey ? t('ai.http.keyWarn') : t('ai.http.keyHidden')),
     snippet('cursor', 'ai.http.cursor'),
     snippet('vscode', 'ai.http.vscode'),

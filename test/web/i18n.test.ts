@@ -45,6 +45,43 @@ describe('wizard i18n', () => {
   });
 });
 
+// Keys app.js builds with template strings; the literal-key test above cannot see them.
+const GUIDE_DOS: Record<string, number> = { s1: 3, s2: 2, s3: 5, s4: 3, s5: 3, s6: 3 };
+const DYNAMIC_KEYS = [
+  ...['welcome', 'google', 'upload', 'accounts', 'ai', 'dashboard'].map((s) => `nav.${s}`),
+  'lang.en',
+  'lang.tr',
+  ...[1, 2, 3, 4].map((n) => `welcome.plan${n}`),
+  ...Object.entries(GUIDE_DOS).flatMap(([id, n]) => [
+    `google.${id}.title`,
+    `google.${id}.why`,
+    ...Array.from({ length: n }, (_, i) => `google.${id}.do${i + 1}`),
+  ]),
+  ...['user_denied', 'timeout', 'admin_blocked', 'unknown'].map((r) => `accounts.failed.${r}`),
+  ...['s1', 's2', 's3', 's4', 's5', 's6'].map((s) => `workspace.${s}`),
+  ...['connected', 'needs_reauth', 'error', 'pending', 'failed'].map((s) => `status.${s}`),
+  ...['colAlias', 'colEmail', 'colStatus', 'colActions'].map((k) => `dashboard.${k}`),
+];
+
+describe('wizard dynamic i18n keys', () => {
+  it('every dynamically built key exists in both languages', async () => {
+    const en = flatten(await json('i18n/en.json'));
+    const tr = flatten(await json('i18n/tr.json'));
+    for (const k of DYNAMIC_KEYS) {
+      expect(en.has(k), `en:${k}`).toBe(true);
+      expect(tr.has(k), `tr:${k}`).toBe(true);
+    }
+  });
+
+  it('the guide step counts in app.js match the expected key list', async () => {
+    const src = await readFile(web('app.js'), 'utf8');
+    const found = Object.fromEntries(
+      [...src.matchAll(/\{\s*id:\s*'(s\d)',[^}]*?\bdos:\s*(\d+)/g)].map((m) => [m[1], Number(m[2])]),
+    );
+    expect(found).toEqual(GUIDE_DOS);
+  });
+});
+
 describe('wizard page safety', () => {
   it('app.js never assigns innerHTML or uses alert/confirm/prompt', async () => {
     const src = await readFile(web('app.js'), 'utf8');

@@ -385,6 +385,27 @@ p {
   border-color: var(--green);
   color: var(--green);
 }
+.btn-quiet.is-failed {
+  border-color: var(--red);
+  color: var(--red);
+}
+.copy {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.codebox-block .copy {
+  margin-left: auto;
+}
+.copy-err {
+  color: var(--red);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.copy-err:empty {
+  display: none;
+}
 .btn-danger {
   background: var(--red);
   color: #ffffff;
@@ -712,9 +733,6 @@ p {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-.codebox-block .btn {
-  margin-left: auto;
 }
 pre.out {
   white-space: pre-wrap;
