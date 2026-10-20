@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>multiple-gmail</title>
-<meta name="description" content="Open-source Windows app that lets AI apps use several Gmail accounts, locally and safely.">
+<meta name="description" content="Open-source desktop app for Windows, macOS and Linux that lets AI apps use several Gmail accounts, locally and safely.">
 <style>
 :root{--bg:#ffffff;--fg:#1c2230;--muted:#5a6475;--card:#f3f5f9;--line:#d8dde7;--accent:#1a56c4}
 @media (prefers-color-scheme:dark){:root{--bg:#12151c;--fg:#e7eaf1;--muted:#a3adbf;--card:#1b2029;--line:#2c3442;--accent:#7fb0ff}}
@@ -29,7 +29,7 @@ footer{margin-top:2.5rem;color:var(--muted);font-size:.9rem}
 <nav><a href="https://github.com/EFK44/multiple-gmail">GitHub repository</a><a href="https://github.com/EFK44/multiple-gmail#readme">README</a><a href="privacy.html">Privacy policy</a></nav>
 
 <h2>What it is</h2>
-<p>multiple-gmail is a free, open-source desktop app for Windows. It lets AI apps that support MCP (Model Context
+<p>multiple-gmail is a free, open-source desktop app for Windows, macOS and Linux. It lets AI apps that support MCP (Model Context
 Protocol), such as Claude, Gemini CLI, Cursor and VS Code, search, read, draft and label mail in several Gmail
 accounts at once. Each person runs their own copy with their own Google Cloud project. There is no hosted service.</p>
 
@@ -37,7 +37,8 @@ accounts at once. Each person runs their own copy with their own Google Cloud pr
 <div class="card">
 <ul>
 <li>It runs locally on your computer. The local server only listens on 127.0.0.1.</li>
-<li>Tokens and credentials are stored encrypted on your disk.</li>
+<li>Tokens and credentials are stored encrypted on your disk. The key is protected by Windows DPAPI, the macOS
+Keychain, or the Linux Secret Service keyring (a file only your user can read when no keyring is available).</li>
 <li>There are no delete tools: the AI cannot delete or trash mail, drafts or labels.</li>
 <li>Sending is allowed only after you approve the exact message.</li>
 <li>It requests a single Google permission, <code>gmail.modify</code>, and never the permission to delete mail permanently.</li>
@@ -45,8 +46,9 @@ accounts at once. Each person runs their own copy with their own Google Cloud pr
 </div>
 
 <h2>Get it</h2>
-<p>Build it from source and follow the step-by-step setup in the
-<a href="https://github.com/EFK44/multiple-gmail#readme">README</a>. The source code is released under the MIT license.</p>
+<p>Download the file for your system from
+<a href="https://github.com/EFK44/multiple-gmail/releases">GitHub Releases</a>, or build it from source, and follow the
+step-by-step setup in the <a href="https://github.com/EFK44/multiple-gmail#readme">README</a>. The source code is released under the MIT license.</p>
 
 <footer>
 <p>Read the <a href="privacy.html">privacy policy</a>. Questions and bug reports:

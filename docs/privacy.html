@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>multiple-gmail Privacy Policy</title>
-<meta name="description" content="Privacy policy for the multiple-gmail open-source desktop app.">
+<meta name="description" content="Privacy policy for the multiple-gmail open-source desktop app for Windows, macOS and Linux.">
 <style>
 :root{--bg:#ffffff;--fg:#1c2230;--muted:#5a6475;--card:#f3f5f9;--line:#d8dde7;--accent:#1a56c4}
 @media (prefers-color-scheme:dark){:root{--bg:#12151c;--fg:#e7eaf1;--muted:#a3adbf;--card:#1b2029;--line:#2c3442;--accent:#7fb0ff}}
@@ -26,7 +26,8 @@ footer{margin-top:2.5rem;color:var(--muted);font-size:.9rem}
 <main>
 <nav><a href="index.html">Home</a><a href="https://github.com/EFK44/multiple-gmail">GitHub</a></nav>
 <h1>Privacy Policy</h1>
-<p class="lead">multiple-gmail, an open-source desktop app. Effective date: 2026-10-20.</p>
+<p class="lead">multiple-gmail, an open-source desktop app for Windows, macOS and Linux. Effective date: 2026-10-20.
+Last updated: 2026-10-20.</p>
 
 <h2>Summary</h2>
 <div class="card">
@@ -48,7 +49,10 @@ The app has no tools to delete mail, drafts or labels.</p>
 
 <h2>How data is stored</h2>
 <p>Access tokens, refresh tokens and your OAuth client credentials are stored only on your computer, in an encrypted
-form. On Windows, the encryption key is protected with Windows DPAPI for your user account. The app does not store your mail on disk. Mail content that an AI app receives from
+form (AES-256-GCM). The encryption key is protected by your operating system for your user account: Windows DPAPI on
+Windows, the macOS Keychain on macOS, and the Secret Service keyring on Linux. On Linux without a keyring, the key is
+kept in a file that only your user account can read (permissions 0600), inside the app's data folder. The app does not
+store your mail on disk. Mail content that an AI app receives from
 the tools is handled by that AI app under its own terms and privacy policy.</p>
 
 <h2>What is shared</h2>
@@ -71,8 +75,10 @@ direct it through your own AI app or as required by law.</p>
 <li>Revoke the app's access to your Google account at any time at
 <a href="https://myaccount.google.com/permissions">https://myaccount.google.com/permissions</a>.</li>
 <li>Remove an account inside the app. This also asks Google to revoke its token.</li>
-<li>Delete all local data by deleting the data folder: <code>%LOCALAPPDATA%\multiple-gmail</code> on Windows, or
-<code>~/.multiple-gmail</code> on other systems.</li>
+<li>Delete all local data by deleting the data folder: <code>%LOCALAPPDATA%\multiple-gmail</code> on Windows,
+<code>~/Library/Application Support/multiple-gmail</code> on macOS, and <code>$XDG_DATA_HOME/multiple-gmail</code>
+(usually <code>~/.local/share/multiple-gmail</code>) on Linux. On macOS the key is also stored in the Keychain and on
+Linux in the Secret Service keyring, under the name multiple-gmail; you can delete it there too.</li>
 </ul>
 
 <h2>Changes to this policy</h2>
@@ -82,7 +88,7 @@ direct it through your own AI app or as required by law.</p>
 <p>For questions about this policy, open an issue at
 <a href="https://github.com/EFK44/multiple-gmail/issues">https://github.com/EFK44/multiple-gmail/issues</a>.</p>
 
-<footer><p>Effective date: 2026-10-20.</p></footer>
+<footer><p>Effective date: 2026-10-20. Last updated: 2026-10-20.</p></footer>
 </main>
 </body>
 </html>
