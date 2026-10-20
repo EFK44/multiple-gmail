@@ -176,7 +176,7 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
     });
   }
 
-  return async function handle(req: ApiRequest): Promise<ApiResponse> {
+  async function handle(req: ApiRequest): Promise<ApiResponse> {
     const { method, path } = req;
     const parts = path.split('/').filter(Boolean);
 
@@ -318,7 +318,10 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
     }
 
     return fail(404, 'Not found.');
-  };
+  }
+
+  // Ids of new accounts whose sign-in is still tracked (tests check that removal drops them).
+  return Object.assign(handle, { pendingAddIds: () => [...pendingAdds.keys()] });
 }
 
 export type ApiHandler = ReturnType<typeof createApi>;
