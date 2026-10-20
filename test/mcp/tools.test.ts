@@ -242,7 +242,8 @@ describe('list_accounts', () => {
       { name: 'alpha', email: 'alpha@example.com', status: 'ok', addedAt: '2026-10-01T00:00:00.000Z' },
       { name: 'beta', email: 'beta@example.com', status: 'ok', addedAt: '2026-10-02T00:00:00.000Z' },
     ]);
-    expect(data!.defaultAccount).toBe('alpha');
+    // defaultAccount cannot be set anywhere, so it is not reported.
+    expect(data).not.toHaveProperty('defaultAccount');
   });
 });
 
@@ -273,7 +274,6 @@ describe('display names', () => {
     expect(all.data!.results[0].account).toBe('İş Hesabı');
     const list = await call('list_accounts', {});
     expect(list.data!.accounts[0].name).toBe('İş Hesabı');
-    expect(list.data!.defaultAccount).toBe('İş Hesabı');
     const bad = await call('get_thread', { account: 'gamma', threadId: 't' });
     expect(bad.text).toContain('Available accounts: İş Hesabı.');
   });

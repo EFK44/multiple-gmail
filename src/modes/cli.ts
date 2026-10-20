@@ -191,14 +191,12 @@ async function accounts(args: string[], io: CliIo): Promise<number> {
   const { flags, positional } = parseFlags(rest);
   if (sub === 'list') {
     const cfg = await loadConfig();
-    const entries = Object.entries(cfg.accounts);
+    const entries = Object.values(cfg.accounts);
     if (!entries.length) {
       io.log('No accounts connected');
       return EXIT_OK;
     }
-    for (const [id, a] of entries) {
-      io.log(`${a.name}${cfg.defaultAccount === id ? ' (default)' : ''}  ${a.email}`);
-    }
+    for (const a of entries) io.log(`${a.name}  ${a.email}`);
     return EXIT_OK;
   }
   if (sub === 'add') {

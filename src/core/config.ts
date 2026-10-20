@@ -13,6 +13,7 @@ const AccountEntrySchema = z.object({ name: z.string().optional(), email: z.stri
 const AppConfigSchema = z.object({
   port: z.number().int().min(1).max(65535),
   language: z.enum(['en', 'tr']),
+  // Kept so older config files still parse; nothing sets or reads it.
   defaultAccount: z.string().nullable(),
   accounts: z.record(z.string(), AccountEntrySchema),
 });

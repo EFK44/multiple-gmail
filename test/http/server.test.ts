@@ -193,6 +193,7 @@ describe('local http server', () => {
       language: 'tr',
       accounts: [{ id: 'alpha', name: 'alpha', email: 'you@example.com', status: 'ok' }],
     });
+    expect(body).not.toHaveProperty('defaultAccount');
     const key = await getLocalApiKey();
     expect(body.apiKeyMasked).not.toContain(key);
     expect(body.apiKeyMasked.endsWith(key.slice(-4))).toBe(true);

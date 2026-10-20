@@ -53,7 +53,7 @@ const UPLOAD_TEXT = {
   },
   clientChanged: {
     en: "This key file belongs to a different Google client than the one your accounts were connected with. Click Reconnect on every account to sign in again.",
-    tr: "Bu anahtar dosyası, hesaplarının bağlandığı istemciden farklı bir Google istemcisine ait. Her hesapta Yeniden bağlan düğmesine tıklayıp tekrar oturum aç.",
+    tr: "Bu anahtar dosyası, hesaplarının bağlandığı istemciden farklı bir Google istemcisine ait. Her hesapta Yeniden bağla düğmesine tıklayıp tekrar oturum aç.",
   },
 } as const;
 const fail = (status: number, error: string): ApiResponse => ({ status, json: { error } });
@@ -165,7 +165,6 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
       clientId: client?.clientId ?? null,
       clientKind: client?.kind ?? null,
       language: cfg.language,
-      defaultAccount: cfg.defaultAccount,
       accounts: Object.entries(cfg.accounts).map(([id, a]) => ({
         id,
         name: a.name,

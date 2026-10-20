@@ -1,6 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
-import { getAccount } from '../../core/config.js';
 import { getAccountStatus } from '../../gmail/errors.js';
 import { run, type Deps } from './util.js';
 
@@ -12,13 +11,12 @@ export function registerAccountTools(server: McpServer, deps: Deps): void {
       description:
         'Multi-account Gmail. List the connected Gmail accounts. Every other tool takes an account param: pass an ' +
         'account name or email from this list (or "all" where a tool allows it). Returns name, email, status ' +
-        '(ok, needs_reauth or error) and addedAt, plus defaultAccount.',
+        '(ok, needs_reauth or error) and addedAt.',
       inputSchema: z.object({}),
       outputSchema: z.object({
         accounts: z.array(
           z.object({ name: z.string(), email: z.string(), status: z.string(), addedAt: z.string() }),
         ),
-        defaultAccount: z.string().nullable(),
       }),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -32,7 +30,6 @@ export function registerAccountTools(server: McpServer, deps: Deps): void {
             status: getAccountStatus(id),
             addedAt: a.addedAt,
           })),
-          defaultAccount: cfg.defaultAccount ? (getAccount(cfg, cfg.defaultAccount)?.name ?? null) : null,
         };
       }),
   );

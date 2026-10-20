@@ -163,7 +163,8 @@ describe('cli free-form names', () => {
     const o = io();
     expect(await runCli(['accounts', 'list'], o)).toBe(0);
     const text = o.out.join('\n');
-    expect(text).toContain('alpha (default)  you@example.com');
+    expect(text).toContain('alpha  you@example.com');
+    expect(text).not.toContain('(default)');
     expect(text).toContain('İş Hesabı  work@example.com');
     expect(text).not.toContain('k2k2k2k2k2k2');
   });
@@ -189,7 +190,7 @@ describe('cli free-form names', () => {
     expect(o.err.join('\n')).toContain('Usage: accounts rename');
     const list = io();
     await runCli(['accounts', 'list'], list);
-    expect(list.out.join('\n')).toContain('Kişisel (default)  you@example.com');
+    expect(list.out.join('\n')).toContain('Kişisel  you@example.com');
   });
 
   it('add with an existing name (any case) suggests reconnect', async () => {
