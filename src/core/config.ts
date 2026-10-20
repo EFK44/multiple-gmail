@@ -1,7 +1,8 @@
-import { mkdir, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import * as z from 'zod/v4';
 import { writeFileAtomic } from './fsx.js';
 import { configPath, dataDir } from './paths.js';
+import { ensureSecureDir } from './secureDir.js';
 
 const AccountEntrySchema = z.object({ email: z.string(), addedAt: z.string() });
 
@@ -43,7 +44,7 @@ export async function loadConfig(): Promise<AppConfig> {
 
 export async function saveConfig(c: AppConfig): Promise<void> {
   const valid = AppConfigSchema.parse(c);
-  await mkdir(dataDir(), { recursive: true });
+  await ensureSecureDir(dataDir());
   await writeFileAtomic(configPath(), JSON.stringify(valid, null, 2) + '\n');
 }
 
