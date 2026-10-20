@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,6 +15,11 @@ process.env.LOCALAPPDATA = join(sandbox, 'local');
 process.env.APPDATA = join(sandbox, 'roaming');
 process.env.USERPROFILE = profile;
 process.env.HOME = profile;
+// On macOS and Linux the master key would otherwise come from the real Keychain or Secret Service. Tests that exercise
+// that path inject a fake runner (test/core/masterKeyPosix.test.ts).
+if (process.platform !== 'win32' && !process.env.MULTIPLE_GMAIL_MASTER_KEY) {
+  process.env.MULTIPLE_GMAIL_MASTER_KEY = randomBytes(32).toString('base64');
+}
 
 afterAll(() => {
   try {

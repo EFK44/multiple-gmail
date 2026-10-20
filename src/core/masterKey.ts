@@ -1,11 +1,11 @@
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { open, readFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { writeFileAtomic } from './fsx.js';
 import { dataDir } from './paths.js';
 import { ensureSecureDir } from './secureDir.js';
-import { system32Dir, systemBinary } from './sysbin.js';
+import { isExecutableFile, posixBinary, system32Dir, systemBinary, type IsExecutable } from './sysbin.js';
 
 const KEY_LEN = 32;
 const KEY_FILE = 'master.key.dpapi';
@@ -43,7 +43,7 @@ export function keyFromEnv(value: string | undefined): Buffer {
 }
 
 async function loadMasterKey(): Promise<Buffer> {
-  if (process.platform !== 'win32') return keyFromEnv(process.env.MULTIPLE_GMAIL_MASTER_KEY);
+  if (process.platform !== 'win32') return loadPosixMasterKey();
 
   const dir = dataDir();
   await ensureSecureDir(dir);
@@ -116,4 +116,215 @@ function dpapi(op: 'Protect' | 'Unprotect', input: Buffer): Promise<Buffer> {
     child.stdin?.on('error', () => {});
     child.stdin?.end(input.toString('base64'));
   });
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// macOS and Linux. Order: MULTIPLE_GMAIL_MASTER_KEY (remote, Docker), then the OS keystore:
+//   macOS: login Keychain item (account multiple-gmail, service multiple-gmail-master-key) via /usr/bin/security.
+//   Linux: an existing <data>/master.key file, else the Secret Service via secret-tool when installed, else a new
+//          0600 master.key file in the 0700 data folder (protected only by file permissions; warned once).
+// A key that exists but cannot be read (access denied, locked keyring, corrupt value) is an error, never a reason to
+// make a new key: a new key would silently orphan every token sealed with the old one.
+
+export const KEYCHAIN_ACCOUNT = 'multiple-gmail';
+export const KEYCHAIN_SERVICE = 'multiple-gmail-master-key';
+const SECRET_ATTRS = ['service', 'multiple-gmail', 'key', 'master'];
+const PLAIN_KEY_FILE = 'master.key';
+const SECURITY_NOT_FOUND = 44; // errSecItemNotFound
+
+export type KeyRunResult = { code: number; stdout: string; stderr: string };
+// Runs an absolute-path binary without a shell; `input` goes to stdin.
+export type KeyRunner = (file: string, args: string[], input?: string) => Promise<KeyRunResult>;
+
+export type PosixKeyDeps = {
+  platform: NodeJS.Platform;
+  env: Record<string, string | undefined>;
+  dir: string;
+  run: KeyRunner;
+  isExec: IsExecutable;
+  warn: (message: string) => void;
+  ensureDir: (dir: string) => Promise<void>;
+  // macOS only: a specific keychain file instead of the default search list (used by the CI integration test).
+  keychain?: string;
+};
+
+let warnedPlainFile = false;
+
+export const realKeyRunner: KeyRunner = (file, args, input) => {
+  if (process.env.VITEST && process.env.MULTIPLE_GMAIL_REAL_KEYSTORE_TEST !== '1') {
+    return Promise.reject(new Error('Tests must not touch the real OS keystore; inject a runner.'));
+  }
+  return new Promise((resolve) => {
+    const child = execFile(file, args, { cwd: '/', timeout: 30_000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+      const raw = err ? (err as { code?: unknown }).code : 0;
+      const code = typeof raw === 'number' ? raw : err ? 1 : 0;
+      resolve({ code, stdout: String(stdout), stderr: err && !stderr ? err.message : String(stderr) });
+    });
+    child.stdin?.on('error', () => {});
+    child.stdin?.end(input ?? '');
+  });
+};
+
+function parseStoredKey(text: string, where: string): Buffer {
+  const v = text.trim();
+  const key = v.length % 4 === 0 && BASE64_RE.test(v) ? Buffer.from(v, 'base64') : Buffer.alloc(0);
+  if (key.length !== KEY_LEN) throw new Error(`The master key in ${where} is corrupt (expected 32 bytes base64).`);
+  return key;
+}
+
+export async function loadPosixMasterKey(partial: Partial<PosixKeyDeps> = {}): Promise<Buffer> {
+  const d: PosixKeyDeps = {
+    platform: partial.platform ?? process.platform,
+    env: partial.env ?? process.env,
+    dir: partial.dir ?? dataDir(),
+    run: partial.run ?? realKeyRunner,
+    isExec: partial.isExec ?? isExecutableFile,
+    warn: partial.warn ?? ((s) => console.error(s)),
+    ensureDir: partial.ensureDir ?? ensureSecureDir,
+    ...(partial.keychain ? { keychain: partial.keychain } : {}),
+  };
+  if ((d.env.MULTIPLE_GMAIL_MASTER_KEY ?? '').trim()) return keyFromEnv(d.env.MULTIPLE_GMAIL_MASTER_KEY);
+  if (d.platform === 'darwin') return keychainMasterKey(d);
+  return linuxMasterKey(d);
+}
+
+// --- macOS Keychain ---
+
+async function keychainRead(d: PosixKeyDeps, security: string): Promise<Buffer | undefined> {
+  const kc = d.keychain ? [d.keychain] : [];
+  const r = await d.run(security, ['find-generic-password', '-a', KEYCHAIN_ACCOUNT, '-s', KEYCHAIN_SERVICE, '-w', ...kc]);
+  if (r.code === SECURITY_NOT_FOUND) return undefined;
+  if (r.code !== 0) {
+    throw new Error(
+      `Could not read the multiple-gmail master key from the macOS Keychain (security exited with ${r.code}): ` +
+        `${r.stderr.trim() || 'no details'}. Allow access when macOS asks, or set MULTIPLE_GMAIL_MASTER_KEY.`,
+    );
+  }
+  return parseStoredKey(r.stdout, 'the macOS Keychain item multiple-gmail-master-key');
+}
+
+async function keychainMasterKey(d: PosixKeyDeps): Promise<Buffer> {
+  const security = posixBinary('security', d.isExec);
+  if (!security) throw new Error(`macOS security tool not found at /usr/bin/security. ${ENV_MESSAGE}`);
+  const existing = await keychainRead(d, security);
+  if (existing) return existing;
+
+  const b64 = randomBytes(KEY_LEN).toString('base64');
+  const kc = d.keychain ? [d.keychain] : [];
+  // Create only (no -U): if another process created the item meanwhile, this add fails and its key is read back.
+  // First choice: `security -i` reads the command from stdin, so the key never appears in any process argv.
+  if (!d.keychain || !/[\s"'\\]/.test(d.keychain)) {
+    const line = ['add-generic-password', '-a', KEYCHAIN_ACCOUNT, '-s', KEYCHAIN_SERVICE, '-w', b64, ...kc].join(' ');
+    await d.run(security, ['-i'], `${line}\n`);
+  }
+  let stored = await keychainRead(d, security);
+  if (!stored) {
+    // Fallback: `-w <value>` in argv, visible to same-user process listings only for the few milliseconds the
+    // one-time add takes. security has no non-interactive stdin option for the password.
+    await d.run(security, ['add-generic-password', '-a', KEYCHAIN_ACCOUNT, '-s', KEYCHAIN_SERVICE, '-w', b64, ...kc]);
+    stored = await keychainRead(d, security);
+  }
+  if (!stored) throw new Error(`Could not store the master key in the macOS Keychain. ${ENV_MESSAGE}`);
+  return stored;
+}
+
+// --- Linux and other POSIX systems ---
+
+async function readPlainKey(file: string): Promise<Buffer | undefined> {
+  let text: string;
+  try {
+    text = await readFile(file, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw err;
+  }
+  return parseStoredKey(text, file);
+}
+
+class KeyringUnavailable extends Error {}
+
+async function secretToolLookup(d: PosixKeyDeps, tool: string): Promise<Buffer | undefined> {
+  const r = await d.run(tool, ['lookup', ...SECRET_ATTRS]);
+  if (r.code === 0 && r.stdout.trim()) return parseStoredKey(r.stdout, 'the Secret Service item multiple-gmail');
+  // Not found: exit 1 (or 0 with no output) and nothing on stderr. Anything on stderr means the keyring itself failed.
+  if (r.stderr.trim()) throw new KeyringUnavailable(r.stderr.trim());
+  return undefined;
+}
+
+// Serializes first-time creation across processes with an O_EXCL lock file in the data folder.
+async function withLock<T>(lock: string, fn: () => Promise<T>): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      await (await open(lock, 'wx', 0o600)).close();
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      const age = await stat(lock).then(
+        (s) => Date.now() - s.mtimeMs,
+        () => 0,
+      );
+      if (age > 30_000) await rm(lock, { force: true });
+      else if (i > 400) throw new Error(`Timed out waiting for ${lock}.`);
+      else await new Promise((r) => setTimeout(r, 25));
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    await rm(lock, { force: true });
+  }
+}
+
+async function linuxMasterKey(d: PosixKeyDeps): Promise<Buffer> {
+  await d.ensureDir(d.dir);
+  const file = join(d.dir, PLAIN_KEY_FILE);
+  const fromFile = await readPlainKey(file);
+  if (fromFile) return fromFile;
+
+  const tool = posixBinary('secret-tool', d.isExec);
+  if (tool) {
+    try {
+      const found = await secretToolLookup(d, tool);
+      if (found) return found;
+      return await withLock(join(d.dir, '.master.key.lock'), async () => {
+        const again = await secretToolLookup(d, tool);
+        if (again) return again;
+        const b64 = randomBytes(KEY_LEN).toString('base64');
+        // The value goes over stdin only.
+        const r = await d.run(tool, ['store', '--label=multiple-gmail', ...SECRET_ATTRS], b64);
+        if (r.code !== 0) throw new KeyringUnavailable(r.stderr.trim() || `secret-tool store exited with ${r.code}`);
+        const stored = await secretToolLookup(d, tool);
+        if (!stored) throw new KeyringUnavailable('the stored key could not be read back');
+        return stored;
+      });
+    } catch (err) {
+      if (!(err instanceof KeyringUnavailable)) throw err;
+      throw new Error(
+        `Could not use the Secret Service keyring through secret-tool: ${err.message}. ` +
+          'Unlock or start your keyring, or set MULTIPLE_GMAIL_MASTER_KEY.',
+      );
+    }
+  }
+
+  if (!warnedPlainFile) {
+    warnedPlainFile = true;
+    d.warn(
+      `multiple-gmail: no system keyring found (secret-tool from libsecret is not installed). The master key is kept in ${file}, ` +
+        'protected only by file permissions.',
+    );
+  }
+  const b64 = randomBytes(KEY_LEN).toString('base64');
+  try {
+    await writeFileAtomic(file, `${b64}\n`, { exclusive: true });
+    return Buffer.from(b64, 'base64');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+  }
+  const winner = await readPlainKey(file);
+  if (!winner) throw new Error(`Master key file ${file} disappeared during creation.`);
+  return winner;
+}
+
+export function resetPosixWarningForTests(): void {
+  warnedPlainFile = false;
 }

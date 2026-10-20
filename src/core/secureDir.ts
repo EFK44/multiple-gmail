@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { chmod, mkdir } from 'node:fs/promises';
 import { userInfo } from 'node:os';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -17,7 +17,8 @@ function windowsAccount(): string {
 }
 
 // Creates dir (recursive). On Windows, when the directory is newly created, strips inherited
-// ACLs and grants full control to the current user only. Elsewhere the directory is created 0700.
+// ACLs and grants full control to the current user only. Elsewhere a newly created directory is set to 0700 (chmod as
+// well as the mkdir mode, which the umask could otherwise widen or narrow).
 export function ensureSecureDir(dir: string): Promise<void> {
   const target = resolve(dir);
   const pending = inFlight.get(target);
@@ -29,7 +30,11 @@ export function ensureSecureDir(dir: string): Promise<void> {
 
 async function createSecureDir(target: string): Promise<void> {
   const created = await mkdir(target, { recursive: true, mode: 0o700 });
-  if (created === undefined || process.platform !== 'win32') return;
+  if (created === undefined) return;
+  if (process.platform !== 'win32') {
+    await chmod(target, 0o700);
+    return;
+  }
   const args = [target, '/inheritance:r', '/grant:r', `${windowsAccount()}:(OI)(CI)F`];
   try {
     await execFileAsync(systemBinary('icacls'), args, { windowsHide: true, cwd: system32Dir() });

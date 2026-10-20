@@ -144,10 +144,18 @@ describe('browser opener', () => {
     expect(o!.file).toMatch(/^[A-Za-z]:\\.*\\explorer\.exe$/i);
     expect(o!.args).toEqual(['http://127.0.0.1:47110/?t=x']);
   });
-  it('has a seam for macOS and Linux and refuses non-http URLs', () => {
-    expect(openerFor('darwin', 'http://127.0.0.1:1/')).toMatchObject({ file: 'open' });
-    expect(openerFor('linux', 'http://127.0.0.1:1/')).toMatchObject({ file: 'xdg-open' });
-    expect(openerFor('win32', 'file:///C:/x')).toBeNull();
+  it('uses /usr/bin/open on macOS and the first existing xdg-open on Linux, by absolute path', () => {
+    const all = () => true;
+    expect(openerFor('darwin', 'http://127.0.0.1:1/', all)).toEqual({ file: '/usr/bin/open', args: ['http://127.0.0.1:1/'], cwd: '/' });
+    expect(openerFor('linux', 'http://127.0.0.1:1/', all)).toMatchObject({ file: '/usr/bin/xdg-open' });
+    expect(openerFor('linux', 'http://127.0.0.1:1/', (p) => p === '/bin/xdg-open')).toMatchObject({ file: '/bin/xdg-open' });
+    expect(openerFor('linux', 'http://127.0.0.1:1/', () => false)).toBeNull();
+  });
+  it('refuses non-http URLs on every OS', () => {
+    for (const p of ['win32', 'darwin', 'linux'] as const) {
+      expect(openerFor(p, 'file:///C:/x', () => true)).toBeNull();
+      expect(openerFor(p, 'javascript:alert(1)', () => true)).toBeNull();
+    }
   });
   it('openUrl resolves false for a refused URL', async () => {
     const { openUrl } = await import('../../src/core/openUrl.js');
