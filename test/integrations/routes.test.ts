@@ -71,6 +71,18 @@ describe('integrations routes', () => {
     expect(((await a('GET', '/integrations', ''))!.json as any).geminiCli.configured).toBe(true);
   });
 
+  it('an entry for another multiple-gmail path reports outdated until it is updated', async () => {
+    const file = geminiSettingsPath();
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, JSON.stringify({ mcpServers: { 'multiple-gmail': { command: 'D:\old\multiple-gmail.exe', args: ['--stdio'] } } }));
+    const a = api();
+    const before = ((await a('GET', '/integrations', ''))!.json as any).geminiCli;
+    expect(before).toMatchObject({ configured: false, outdated: true });
+    await a('POST', '/integrations/gemini-cli', '');
+    const after = ((await a('GET', '/integrations', ''))!.json as any).geminiCli;
+    expect(after).toMatchObject({ configured: true, outdated: false });
+  });
+
   it('POST gemini-cli with invalid JSON returns 409 and keeps the file', async () => {
     const file = geminiSettingsPath();
     await mkdir(dirname(file), { recursive: true });
@@ -122,6 +134,7 @@ describe('integrations routes', () => {
       configPath: null,
       configPaths: [],
       configured: false,
+      outdated: false,
     });
     expect((await a('POST', '/integrations/claude-desktop', ''))!.status).toBe(409);
   });
@@ -147,7 +160,7 @@ describe('integrations routes', () => {
       });
       const j = (await a('GET', '/integrations', ''))!.json as any;
       const target = join(dir, 'home', 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
-      expect(j.claudeDesktop).toEqual({ supported: true, configPath: target, configPaths: [target], configured: false });
+      expect(j.claudeDesktop).toEqual({ supported: true, configPath: target, configPaths: [target], configured: false, outdated: false });
       expect(j.claudeCode.available).toBe(true);
       const post = (await a('POST', '/integrations/claude-desktop', ''))!.json as any;
       expect(post.ok).toBe(true);

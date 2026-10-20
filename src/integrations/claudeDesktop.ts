@@ -1,8 +1,8 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { hasMcpServer, IntegrationError, mergeMcpServer } from './jsonMerge.js';
-import type { LaunchSpec } from './launch.js';
+import { combinedStatus, IntegrationError, mergeMcpServer, type IntegrationStatus } from './jsonMerge.js';
+import { stdioLaunchSpec, type LaunchSpec } from './launch.js';
 
 const FILE = 'claude_desktop_config.json';
 
@@ -79,12 +79,20 @@ export function claudeDesktopTargets(platform: NodeJS.Platform = process.platfor
   return classic ? [classic] : [];
 }
 
-// Configured only when every target has the entry: a stale copy in one place must not hide a missing one.
-export async function isClaudeDesktopConfigured(platform: NodeJS.Platform = process.platform): Promise<boolean> {
-  const targets = claudeDesktopTargets(platform);
-  if (targets.length === 0) return false;
-  for (const f of targets) if (!(await hasMcpServer(f))) return false;
-  return true;
+// Configured only when every target has an entry that runs `command` (this copy): a stale copy in one place must not
+// hide a missing one, and an entry for an old path is reported as outdated so the UI offers Update.
+export function claudeDesktopStatus(
+  platform: NodeJS.Platform = process.platform,
+  command: string = stdioLaunchSpec().command,
+): Promise<IntegrationStatus> {
+  return combinedStatus(claudeDesktopTargets(platform), command);
+}
+
+export async function isClaudeDesktopConfigured(
+  platform: NodeJS.Platform = process.platform,
+  command: string = stdioLaunchSpec().command,
+): Promise<boolean> {
+  return (await claudeDesktopStatus(platform, command)).configured;
 }
 
 export async function addToClaudeDesktop(spec: LaunchSpec, platform: NodeJS.Platform = process.platform) {

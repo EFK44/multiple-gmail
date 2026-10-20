@@ -198,6 +198,8 @@
     "title": "Yapay zekâ uygulamanı bağla",
     "lead": "Kullandığın uygulamayı seç. Birden fazlasını bağlayabilirsin. Her uygulama bütün Gmail hesaplarını adlarıyla görür.",
     "already": "Zaten eklenmiş.",
+    "outdated": "Eklenmiş, ama başka bir konumdaki multiple-gmail dosyası için. Bu kopyayı kullanması için Güncelle'ye tıkla.",
+    "update": "Güncelle",
     "changed": "Değişen dosya: {path}",
     "unsupported": "Bu sadece Windows'ta çalışır.",
     "unsupported_mac": "Bu, bu sistemde kullanılamıyor.",

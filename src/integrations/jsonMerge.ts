@@ -75,12 +75,34 @@ export async function mergeMcpServer(
   return { backup, created: existing === null };
 }
 
-export async function hasMcpServer(file: string, name = 'multiple-gmail'): Promise<boolean> {
+// 'current': the entry runs `command` (this copy of multiple-gmail). 'outdated': an entry exists but runs something
+// else, for example an older copy at another path. 'missing': no entry, or the file is absent or unreadable.
+export type EntryState = 'missing' | 'current' | 'outdated';
+
+// Windows paths are case-insensitive.
+function sameCommand(a: string, b: string): boolean {
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+export async function mcpServerState(file: string, command: string, name = 'multiple-gmail'): Promise<EntryState> {
   try {
     const doc = await readJsonConfig(file);
     const servers = doc?.mcpServers;
-    return isObject(servers) && name in servers;
+    if (!isObject(servers) || !Object.hasOwn(servers, name)) return 'missing';
+    const entry = servers[name];
+    return isObject(entry) && typeof entry.command === 'string' && sameCommand(entry.command, command)
+      ? 'current'
+      : 'outdated';
   } catch {
-    return false;
+    return 'missing';
   }
+}
+
+export type IntegrationStatus = { configured: boolean; outdated: boolean };
+
+// Configured only when every file has the current entry; outdated when any file points at another command.
+export async function combinedStatus(files: string[], command: string): Promise<IntegrationStatus> {
+  if (files.length === 0) return { configured: false, outdated: false };
+  const states = await Promise.all(files.map((f) => mcpServerState(f, command)));
+  return { configured: states.every((s) => s === 'current'), outdated: states.includes('outdated') };
 }

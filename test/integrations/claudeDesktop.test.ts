@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   addToClaudeDesktop,
   claudeDesktopTargets,
+  claudeDesktopStatus,
   isClaudeDesktopConfigured,
 } from '../../src/integrations/claudeDesktop.js';
 
@@ -75,7 +76,7 @@ describe('addToClaudeDesktop on Store v3', () => {
       someFlag: 1,
     };
     await writeFile(store(), JSON.stringify(prefs, null, 2));
-    expect(await isClaudeDesktopConfigured('win32')).toBe(false);
+    expect(await isClaudeDesktopConfigured('win32', spec.command)).toBe(false);
     const written = await addToClaudeDesktop(spec, 'win32');
     expect(written.map((w) => w.path)).toEqual([store()]);
     expect(typeof written[0].backup).toBe('string');
@@ -85,7 +86,7 @@ describe('addToClaudeDesktop on Store v3', () => {
       mcpServers: { other: prefs.mcpServers.other, 'multiple-gmail': spec },
       someFlag: 1,
     });
-    expect(await isClaudeDesktopConfigured('win32')).toBe(true);
+    expect(await isClaudeDesktopConfigured('win32', spec.command)).toBe(true);
   });
 
   it('creates the file inside an existing Claude-Data folder', async () => {
@@ -99,9 +100,20 @@ describe('addToClaudeDesktop on Store v3', () => {
     await mkdir(join(local, 'Claude-Data', 'claude_pzs8sxrjxfjjc'), { recursive: true });
     await mkdir(join(roaming, 'Claude'), { recursive: true });
     await writeFile(classic(), JSON.stringify({ mcpServers: { 'multiple-gmail': spec } }));
-    expect(await isClaudeDesktopConfigured('win32')).toBe(false);
+    expect(await isClaudeDesktopConfigured('win32', spec.command)).toBe(false);
     await addToClaudeDesktop(spec, 'win32');
-    expect(await isClaudeDesktopConfigured('win32')).toBe(true);
+    expect(await isClaudeDesktopConfigured('win32', spec.command)).toBe(true);
+  });
+});
+
+describe('Claude Desktop entry status', () => {
+  it('an entry for another multiple-gmail path is outdated, not configured', async () => {
+    await mkdir(join(roaming, 'Claude'), { recursive: true });
+    const classicFile = join(roaming, 'Claude', FILE);
+    await writeFile(classicFile, JSON.stringify({ mcpServers: { 'multiple-gmail': { command: 'D:\old\multiple-gmail.exe', args: ['--stdio'] } } }));
+    expect(await claudeDesktopStatus('win32', spec.command)).toEqual({ configured: false, outdated: true });
+    await addToClaudeDesktop(spec, 'win32');
+    expect(await claudeDesktopStatus('win32', spec.command)).toEqual({ configured: true, outdated: false });
   });
 });
 
@@ -125,16 +137,16 @@ describe('Claude Desktop on macOS and Linux', () => {
   it('macOS writes ~/Library/Application Support/Claude/claude_desktop_config.json', async () => {
     const target = join(home, 'Library', 'Application Support', 'Claude', FILE);
     expect(claudeDesktopTargets('darwin')).toEqual([target]);
-    expect(await isClaudeDesktopConfigured('darwin')).toBe(false);
+    expect(await isClaudeDesktopConfigured('darwin', spec.command)).toBe(false);
     const posixSpec = { command: '/Applications/a b/multiple-gmail', args: ['--stdio'] };
     expect(await addToClaudeDesktop(posixSpec, 'darwin')).toEqual([{ path: target, backup: null, created: true }]);
     expect(JSON.parse(await readFile(target, 'utf8'))).toEqual({ mcpServers: { 'multiple-gmail': posixSpec } });
-    expect(await isClaudeDesktopConfigured('darwin')).toBe(true);
+    expect(await isClaudeDesktopConfigured('darwin', posixSpec.command)).toBe(true);
   });
 
   it('Linux targets ~/.config/Claude only when that folder exists', async () => {
     expect(claudeDesktopTargets('linux')).toEqual([]);
-    expect(await isClaudeDesktopConfigured('linux')).toBe(false);
+    expect(await isClaudeDesktopConfigured('linux', spec.command)).toBe(false);
     await mkdir(join(home, '.config', 'Claude'), { recursive: true });
     expect(claudeDesktopTargets('linux')).toEqual([join(home, '.config', 'Claude', FILE)]);
   });

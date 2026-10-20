@@ -2,7 +2,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mergeMcpServer } from '../../src/integrations/jsonMerge.js';
+import { mcpServerState, mergeMcpServer } from '../../src/integrations/jsonMerge.js';
 
 let dir: string;
 beforeEach(async () => {
@@ -13,6 +13,21 @@ afterEach(async () => {
 });
 
 const entry = { command: 'C:\\x\\multiple-gmail.exe', args: ['--stdio'] };
+
+describe('mcpServerState', () => {
+  it('is current only when the entry runs this command; another command is outdated', async () => {
+    const file = join(dir, 'state.json');
+    expect(await mcpServerState(file, '/opt/mg/multiple-gmail')).toBe('missing');
+    await writeFile(file, JSON.stringify({ mcpServers: { other: { command: 'x', args: [] } } }));
+    expect(await mcpServerState(file, '/opt/mg/multiple-gmail')).toBe('missing');
+    await writeFile(file, JSON.stringify({ mcpServers: { 'multiple-gmail': { command: '/old/multiple-gmail', args: [] } } }));
+    expect(await mcpServerState(file, '/opt/mg/multiple-gmail')).toBe('outdated');
+    await writeFile(file, JSON.stringify({ mcpServers: { 'multiple-gmail': { args: [] } } }));
+    expect(await mcpServerState(file, '/opt/mg/multiple-gmail')).toBe('outdated');
+    await writeFile(file, JSON.stringify({ mcpServers: { 'multiple-gmail': { command: '/opt/mg/multiple-gmail', args: [] } } }));
+    expect(await mcpServerState(file, '/opt/mg/multiple-gmail')).toBe('current');
+  });
+});
 
 describe('mergeMcpServer', () => {
   it('creates a missing file (and its folder)', async () => {

@@ -1036,6 +1036,7 @@ function claudeDesktopCard(info) {
         : null,
     );
   } else if (info.configured) out = msg('quiet', t('ai.already'));
+  else if (info.outdated) out = msg('warn', t('ai.outdated'));
   return card(
     'claude-desktop',
     'ai.claudeDesktop.title',
@@ -1043,7 +1044,7 @@ function claudeDesktopCard(info) {
     h(
       'div',
       { class: 'row-actions' },
-      h('button', { type: 'button', class: 'btn btn-primary', id: 'add-claude-desktop', disabled: res?.busy, onclick: () => runIntegration('claudeDesktop', '/integrations/claude-desktop') }, t('ai.claudeDesktop.button')),
+      h('button', { type: 'button', class: 'btn btn-primary', id: 'add-claude-desktop', disabled: res?.busy, onclick: () => runIntegration('claudeDesktop', '/integrations/claude-desktop') }, info.outdated && !info.configured ? t('ai.update') : t('ai.claudeDesktop.button')),
     ),
     out,
   );
@@ -1080,11 +1081,12 @@ function geminiCard(info) {
   else if (res?.error) out = msg('error', res.error);
   else if (res?.data) out = msg('ok', t('ai.gemini.done'), writtenList(res.data.written));
   else if (info?.configured) out = msg('quiet', t('ai.already'));
+  else if (info?.outdated) out = msg('warn', t('ai.outdated'));
   return card(
     'gemini',
     'ai.gemini.title',
     h('p', {}, t('ai.gemini.desc')),
-    h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-primary', id: 'add-gemini', disabled: res?.busy, onclick: () => runIntegration('gemini', '/integrations/gemini-cli') }, t('ai.gemini.button'))),
+    h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-primary', id: 'add-gemini', disabled: res?.busy, onclick: () => runIntegration('gemini', '/integrations/gemini-cli') }, info?.outdated && !info?.configured ? t('ai.update') : t('ai.gemini.button'))),
     out,
   );
 }

@@ -1,9 +1,9 @@
 import { loadConfig } from '../core/config.js';
 import type { ApiResponse } from '../http/api.js';
 import { getAutostart, setAutostart } from './autostart.js';
-import { addToClaudeDesktop, claudeDesktopTargets, isClaudeDesktopConfigured } from './claudeDesktop.js';
+import { addToClaudeDesktop, claudeDesktopStatus, claudeDesktopTargets } from './claudeDesktop.js';
 import { claudeCodeCommand, findClaude, runClaudeAdd, type RunResult } from './claudeCode.js';
-import { addToGeminiCli, geminiSettingsPath, isGeminiConfigured } from './geminiCli.js';
+import { addToGeminiCli, geminiSettingsPath, geminiStatus } from './geminiCli.js';
 import { IntegrationError } from './jsonMerge.js';
 import { stdioLaunchSpec, type LaunchSpec } from './launch.js';
 import { httpSnippets } from './snippets.js';
@@ -69,9 +69,9 @@ export function createIntegrationsApi(partial: Partial<IntegrationsDeps> = {}) {
           // ~/.config/Claude exists.
           claudeDesktop:
             claudeDesktopAvailable(targets)
-              ? { supported: true, configPath: targets[0] ?? null, configPaths: targets, configured: await isClaudeDesktopConfigured(platform) }
+              ? { supported: true, configPath: targets[0] ?? null, configPaths: targets, ...(await claudeDesktopStatus(platform, spec.command)) }
               : { supported: false },
-          geminiCli: { configPath: geminiSettingsPath(), configured: await isGeminiConfigured() },
+          geminiCli: { configPath: geminiSettingsPath(), ...(await geminiStatus(spec.command)) },
           claudeCode: { available: claude !== null, command: claudeCodeCommand(spec) },
           http: {
             url: `http://127.0.0.1:${port}/mcp`,

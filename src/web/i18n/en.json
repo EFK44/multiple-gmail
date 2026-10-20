@@ -198,6 +198,8 @@
     "title": "Connect your AI app",
     "lead": "Pick the app you use. You can connect more than one. Each app then sees all your Gmail accounts by their names.",
     "already": "Already added.",
+    "outdated": "Added, but for a multiple-gmail file at another location. Click Update to point it at this copy.",
+    "update": "Update",
     "changed": "Changed file: {path}",
     "unsupported": "This works only on Windows.",
     "unsupported_mac": "This is not available on this system.",
