@@ -374,9 +374,9 @@ describe('local http server', () => {
       const ch = await post(s, '/internal/launch/challenge', { nonceC });
       expect(ch.status).toBe(200);
       const { nonceS, proof } = JSON.parse(ch.body);
-      expect(proof).toBe(serverProof(key, nonceC, nonceS));
+      expect(proof).toBe(serverProof(key, portOf(s), nonceC, nonceS));
       expect(ch.body).not.toContain(key);
-      const r = await post(s, '/internal/launch', { nonceS, proof: clientProof(key, nonceS, nonceC) });
+      const r = await post(s, '/internal/launch', { nonceS, proof: clientProof(key, portOf(s), nonceS, nonceC) });
       expect(r.status).toBe(200);
       expect(JSON.parse(r.body).url.startsWith(`http://127.0.0.1:${portOf(s)}/?t=`)).toBe(true);
       expect((await probeExistingInstance(portOf(s), getLocalApiKey)).kind).toBe('launch');
@@ -387,7 +387,7 @@ describe('local http server', () => {
       const key = await getLocalApiKey();
       const nonceC = newNonce();
       const { nonceS } = JSON.parse((await post(s, '/internal/launch/challenge', { nonceC })).body);
-      const body = { nonceS, proof: clientProof(key, nonceS, nonceC) };
+      const body = { nonceS, proof: clientProof(key, portOf(s), nonceS, nonceC) };
       expect((await post(s, '/internal/launch', body)).status).toBe(200);
       expect((await post(s, '/internal/launch', body)).status).toBe(401);
     });
@@ -397,9 +397,9 @@ describe('local http server', () => {
       const key = await getLocalApiKey();
       const nonceC = newNonce();
       const { nonceS } = JSON.parse((await post(s, '/internal/launch/challenge', { nonceC })).body);
-      const wrong = await post(s, '/internal/launch', { nonceS, proof: clientProof('wrong-key', nonceS, nonceC) });
+      const wrong = await post(s, '/internal/launch', { nonceS, proof: clientProof('wrong-key', portOf(s), nonceS, nonceC) });
       expect(wrong.status).toBe(401);
-      const right = await post(s, '/internal/launch', { nonceS, proof: clientProof(key, nonceS, nonceC) });
+      const right = await post(s, '/internal/launch', { nonceS, proof: clientProof(key, portOf(s), nonceS, nonceC) });
       expect(right.status).toBe(401);
     });
 
@@ -410,7 +410,7 @@ describe('local http server', () => {
       const nonceC = newNonce();
       const { nonceS } = JSON.parse((await post(s, '/internal/launch/challenge', { nonceC })).body);
       now += 30_001;
-      const r = await post(s, '/internal/launch', { nonceS, proof: clientProof(key, nonceS, nonceC) });
+      const r = await post(s, '/internal/launch', { nonceS, proof: clientProof(key, portOf(s), nonceS, nonceC) });
       expect(r.status).toBe(401);
     });
 

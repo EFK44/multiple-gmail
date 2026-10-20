@@ -31,9 +31,9 @@ export async function probeExistingInstance(
     const ch = await post('/internal/launch/challenge', { nonceC });
     if (!ch.ok) return { kind: 'foreign' };
     const { nonceS, proof } = (await ch.json()) as { nonceS?: unknown; proof?: unknown };
-    if (!isNonce(nonceS) || !proofEqual(proof, serverProof(key, nonceC, nonceS))) return { kind: 'foreign' };
+    if (!isNonce(nonceS) || !proofEqual(proof, serverProof(key, port, nonceC, nonceS))) return { kind: 'foreign' };
 
-    const res = await post('/internal/launch', { nonceS, proof: clientProof(key, nonceS, nonceC) });
+    const res = await post('/internal/launch', { nonceS, proof: clientProof(key, port, nonceS, nonceC) });
     if (!res.ok) return { kind: 'foreign' };
     const { url } = (await res.json()) as { url?: unknown };
     if (typeof url !== 'string' || !url.startsWith(`${base}/?t=`)) return { kind: 'foreign' };

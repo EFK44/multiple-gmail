@@ -7,6 +7,7 @@ const RELATIVE: Record<string, string[]> = {
   icacls: ['icacls.exe'],
   explorer: ['..', 'explorer.exe'],
   where: ['where.exe'],
+  cmd: ['cmd.exe'],
 };
 
 export function systemRoot(): string {

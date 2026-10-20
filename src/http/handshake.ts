@@ -14,8 +14,11 @@ export const isNonce = (v: unknown): v is string => typeof v === 'string' && NON
 
 const hmac = (key: string, msg: string) => createHmac('sha256', key).update(msg, 'utf8').digest('base64url');
 
-export const serverProof = (key: string, nonceC: string, nonceS: string) => hmac(key, `server|${nonceC}|${nonceS}`);
-export const clientProof = (key: string, nonceS: string, nonceC: string) => hmac(key, `client|${nonceS}|${nonceC}`);
+// The port is bound into both messages so a proof captured on one port cannot be replayed against another.
+export const serverProof = (key: string, port: number, nonceC: string, nonceS: string) =>
+  hmac(key, `server|${port}|${nonceC}|${nonceS}`);
+export const clientProof = (key: string, port: number, nonceS: string, nonceC: string) =>
+  hmac(key, `client|${port}|${nonceS}|${nonceC}`);
 
 export function proofEqual(a: unknown, b: string): boolean {
   if (typeof a !== 'string') return false;
@@ -34,7 +37,7 @@ export class HandshakeStore {
     this.nonces = new ExpiringDigests(now, MAX_NONCES);
   }
 
-  challenge(key: string, nonceC: string): { nonceS: string; proof: string } {
+  challenge(key: string, port: number, nonceC: string): { nonceS: string; proof: string } {
     const nonceS = newNonce();
     this.nonces.add(nonceS, NONCE_TTL_MS);
     this.clientNonce.set(nonceS, nonceC);
@@ -42,16 +45,16 @@ export class HandshakeStore {
       const oldest = this.clientNonce.keys().next().value;
       if (oldest) this.clientNonce.delete(oldest);
     }
-    return { nonceS, proof: serverProof(key, nonceC, nonceS) };
+    return { nonceS, proof: serverProof(key, port, nonceC, nonceS) };
   }
 
   // Consumes nonceS (whether or not the proof is right) and checks the client proof.
-  verify(key: string, nonceS: string, proof: unknown): boolean {
+  verify(key: string, port: number, nonceS: string, proof: unknown): boolean {
     const hit = this.nonces.find(nonceS);
     const nonceC = this.clientNonce.get(nonceS);
     this.clientNonce.delete(nonceS);
     if (!hit || nonceC === undefined) return false;
     this.nonces.delete(hit);
-    return proofEqual(proof, clientProof(key, nonceS, nonceC));
+    return proofEqual(proof, clientProof(key, port, nonceS, nonceC));
   }
 }

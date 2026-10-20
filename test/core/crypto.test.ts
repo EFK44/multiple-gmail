@@ -109,7 +109,8 @@ describe('systemBinary', () => {
     }
     expect(systemBinary('powershell')).toBe(join(system32Dir(), 'WindowsPowerShell', 'v1.0', 'powershell.exe'));
     expect(systemBinary('icacls')).toBe(join(system32Dir(), 'icacls.exe'));
-    expect(() => systemBinary('cmd')).toThrow();
+    expect(() => systemBinary('notepad')).toThrow();
+    expect(systemBinary('cmd')).toMatch(/System32.cmd.exe$/i);
   });
 });
 

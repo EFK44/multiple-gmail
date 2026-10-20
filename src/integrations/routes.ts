@@ -1,0 +1,117 @@
+import { loadConfig } from '../core/config.js';
+import type { ApiResponse } from '../http/api.js';
+import { getAutostart, setAutostart } from './autostart.js';
+import { addToClaudeDesktop, claudeDesktopTargets, isClaudeDesktopConfigured } from './claudeDesktop.js';
+import { claudeCodeCommand, findClaude, runClaudeAdd, type RunResult } from './claudeCode.js';
+import { addToGeminiCli, geminiSettingsPath, isGeminiConfigured } from './geminiCli.js';
+import { IntegrationError } from './jsonMerge.js';
+import { stdioLaunchSpec, type LaunchSpec } from './launch.js';
+import { httpSnippets } from './snippets.js';
+
+export const KEY_PLACEHOLDER = '<YOUR_API_KEY>';
+const OUTPUT_LIMIT = 2048;
+
+export type IntegrationsDeps = {
+  launch: () => LaunchSpec;
+  port: () => Promise<number>;
+  findClaude: () => Promise<string | null>;
+  runClaude: (claudePath: string, spec: LaunchSpec) => Promise<RunResult>;
+  platform: NodeJS.Platform;
+  getAutostart: () => Promise<boolean>;
+  setAutostart: (enabled: boolean) => Promise<void>;
+};
+
+const ok = (json: unknown): ApiResponse => ({ status: 200, json });
+const fail = (status: number, error: string): ApiResponse => ({ status, json: { error } });
+const trim = (s: string) => s.trim().slice(0, OUTPUT_LIMIT);
+
+// Handles /integrations/* and /autostart (path is relative to /api). Returns null for other paths.
+// Responses never contain the API key: snippets carry a placeholder the UI fills in after the user clicks copy.
+export function createIntegrationsApi(partial: Partial<IntegrationsDeps> = {}) {
+  const deps: IntegrationsDeps = {
+    launch: partial.launch ?? stdioLaunchSpec,
+    port: partial.port ?? (async () => (await loadConfig()).port),
+    findClaude: partial.findClaude ?? findClaude,
+    runClaude: partial.runClaude ?? runClaudeAdd,
+    platform: partial.platform ?? process.platform,
+    getAutostart: partial.getAutostart ?? getAutostart,
+    setAutostart: partial.setAutostart ?? ((e) => setAutostart(e)),
+  };
+  const windows = deps.platform === 'win32';
+
+  async function guarded(fn: () => Promise<ApiResponse>): Promise<ApiResponse> {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e instanceof IntegrationError) return fail(409, e.message);
+      return fail(500, 'Could not complete the request.');
+    }
+  }
+
+  return async function handle(method: string, path: string, body: string): Promise<ApiResponse | null> {
+    if (path === '/integrations' && method === 'GET') {
+      return guarded(async () => {
+        const spec = deps.launch();
+        const claude = windows ? await deps.findClaude() : null;
+        return ok({
+          claudeDesktop: windows
+            ? { supported: true, configPath: claudeDesktopTargets()[0] ?? null, configured: await isClaudeDesktopConfigured() }
+            : { supported: false },
+          geminiCli: { configPath: geminiSettingsPath(), configured: await isGeminiConfigured() },
+          claudeCode: { available: claude !== null, command: claudeCodeCommand(spec) },
+          http: {
+            url: `http://127.0.0.1:${await deps.port()}/mcp`,
+            snippets: httpSnippets(await deps.port(), KEY_PLACEHOLDER),
+            apiKeyPlaceholder: KEY_PLACEHOLDER,
+          },
+        });
+      });
+    }
+
+    if (path === '/integrations/claude-desktop' && method === 'POST') {
+      if (!windows) return ok({ supported: false });
+      return guarded(async () => ok({ ok: true, written: await addToClaudeDesktop(deps.launch()) }));
+    }
+
+    if (path === '/integrations/gemini-cli' && method === 'POST') {
+      return guarded(async () => ok({ ok: true, written: [await addToGeminiCli(deps.launch())] }));
+    }
+
+    if (path === '/integrations/claude-code' && method === 'POST') {
+      if (!windows) return ok({ supported: false });
+      return guarded(async () => {
+        const claude = await deps.findClaude();
+        if (!claude) return fail(409, 'The claude command was not found on this computer.');
+        let r: RunResult;
+        try {
+          r = await deps.runClaude(claude, deps.launch());
+        } catch (e) {
+          return fail(409, (e as Error).message);
+        }
+        return ok({ ok: r.code === 0, code: r.code, stdout: trim(r.stdout), stderr: trim(r.stderr) });
+      });
+    }
+
+    if (path === '/autostart' && method === 'GET') {
+      if (!windows) return ok({ supported: false });
+      return guarded(async () => ok({ supported: true, enabled: await deps.getAutostart() }));
+    }
+
+    if (path === '/autostart' && method === 'POST') {
+      if (!windows) return ok({ supported: false });
+      let enabled: unknown;
+      try {
+        enabled = (body ? JSON.parse(body) : {})?.enabled;
+      } catch {
+        return fail(400, 'Expected a JSON object.');
+      }
+      if (typeof enabled !== 'boolean') return fail(400, 'enabled must be true or false.');
+      return guarded(async () => {
+        await deps.setAutostart(enabled as boolean);
+        return ok({ supported: true, enabled: await deps.getAutostart() });
+      });
+    }
+
+    return null;
+  };
+}

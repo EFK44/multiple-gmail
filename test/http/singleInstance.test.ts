@@ -41,10 +41,10 @@ describe('probeExistingInstance', () => {
       if (req.url === '/health') return { json: health };
       if (req.url === '/internal/launch/challenge') {
         nonceC = JSON.parse(body).nonceC;
-        return { json: { nonceS, proof: serverProof(KEY, nonceC, nonceS) } };
+        return { json: { nonceS, proof: serverProof(KEY, p, nonceC, nonceS) } };
       }
       const b = JSON.parse(body);
-      if (b.nonceS === nonceS && b.proof === clientProof(KEY, nonceS, nonceC)) {
+      if (b.nonceS === nonceS && b.proof === clientProof(KEY, p, nonceS, nonceC)) {
         return { json: { url: `http://127.0.0.1:${p}/?t=abc` } };
       }
       return { status: 401, json: {} };
@@ -77,12 +77,21 @@ describe('probeExistingInstance', () => {
 
   it('rejects a launch URL that does not point at the probed port', async () => {
     const nonceS = 'S'.repeat(43);
-    const { port } = await listen((req, body) => {
+    const { port } = await listen((req, body, p) => {
       if (req.url === '/health') return { json: health };
       if (req.url === '/internal/launch/challenge') {
-        return { json: { nonceS, proof: serverProof(KEY, JSON.parse(body).nonceC, nonceS) } };
+        return { json: { nonceS, proof: serverProof(KEY, p, JSON.parse(body).nonceC, nonceS) } };
       }
       return { json: { url: 'https://evil.example.com/' } };
+    });
+    expect(await probeExistingInstance(port, async () => KEY)).toEqual({ kind: 'foreign' });
+  });
+
+  it('rejects a server proof computed for a different port', async () => {
+    const nonceS = 'S'.repeat(43);
+    const { port } = await listen((req, body, p) => {
+      if (req.url === '/health') return { json: health };
+      return { json: { nonceS, proof: serverProof(KEY, p + 1, JSON.parse(body).nonceC, nonceS) } };
     });
     expect(await probeExistingInstance(port, async () => KEY)).toEqual({ kind: 'foreign' });
   });

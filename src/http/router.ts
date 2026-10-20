@@ -144,9 +144,9 @@ export function createRouter(ctx: RouterContext): (req: IncomingMessage, res: Se
       const key = await ctx.getApiKey();
       if (path === '/internal/launch/challenge') {
         if (!isNonce(body.nonceC)) return sendJson(res, 400, { error: 'Bad request.' });
-        return sendJson(res, 200, ctx.handshake.challenge(key, body.nonceC));
+        return sendJson(res, 200, ctx.handshake.challenge(key, ctx.port(), body.nonceC));
       }
-      if (!isNonce(body.nonceS) || !ctx.handshake.verify(key, body.nonceS, body.proof)) {
+      if (!isNonce(body.nonceS) || !ctx.handshake.verify(key, ctx.port(), body.nonceS, body.proof)) {
         return sendJson(res, 401, { error: 'Unauthorized.' });
       }
       return sendJson(res, 200, { url: ctx.launchUrl() });

@@ -10,10 +10,12 @@ import {
 } from '../core/secrets.js';
 import { clearGmailCache } from '../gmail/client.js';
 import { getAccountStatus } from '../gmail/errors.js';
+import { createIntegrationsApi, type IntegrationsDeps } from '../integrations/routes.js';
 
 export type ApiDeps = {
   startLoopbackAuth: typeof startLoopbackAuth;
   removeAccount: (alias: string) => Promise<{ revoked: boolean }>;
+  integrations: Partial<IntegrationsDeps>;
 };
 
 export type ApiRequest = {
@@ -68,7 +70,9 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
   const deps: ApiDeps = {
     startLoopbackAuth: partial.startLoopbackAuth ?? startLoopbackAuth,
     removeAccount: partial.removeAccount ?? ((alias) => removeAccount(alias)),
+    integrations: partial.integrations ?? {},
   };
+  const integrations = createIntegrationsApi(deps.integrations);
   const flows = new Map<string, FlowState>();
   // Flows whose loopback listener is being started (between reservation and authUrl).
   const starting = new Map<string, Promise<string | null>>();
@@ -228,7 +232,10 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
       return ok({ ok: true, language });
     }
 
-    // Task 11 adds here: POST /integrations/:client and POST /autostart {enabled}.
+    if (path === '/autostart' || path.startsWith('/integrations')) {
+      const res = await integrations(method, path, req.body);
+      if (res) return res;
+    }
 
     return fail(404, 'Not found.');
   };
