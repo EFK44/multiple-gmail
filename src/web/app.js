@@ -92,6 +92,24 @@ function t(key, vars) {
   return s;
 }
 
+// The setup page always runs on the same computer as multiple-gmail, so the browser's OS is the app's OS.
+const OS = (() => {
+  const p = `${navigator.userAgentData?.platform ?? ''} ${navigator.platform ?? ''} ${navigator.userAgent ?? ''}`;
+  if (/Windows|Win32|Win64/i.test(p)) return 'win';
+  if (/Mac/i.test(p)) return 'mac';
+  if (/Linux|X11|CrOS/i.test(p)) return 'linux';
+  return 'win';
+})();
+
+// OS-specific copy: "<key>_mac" / "<key>_linux" when present; Windows (and anything unknown) uses the base key.
+function tOs(key, vars) {
+  if (OS !== 'win') {
+    const k = `${key}_${OS}`;
+    if (lookup(S.dict, k) ?? lookup(S.fallback, k)) return t(k, vars);
+  }
+  return t(key, vars);
+}
+
 function announce(text) {
   const el = document.getElementById('announce');
   el.textContent = '';
@@ -998,11 +1016,11 @@ function writtenList(written) {
 
 function claudeDesktopCard(info) {
   const res = S.results.claudeDesktop;
-  if (!info?.supported) return card('claude-desktop', 'ai.claudeDesktop.title', h('p', {}, t('ai.claudeDesktop.desc')), msg('quiet', t('ai.unsupported')));
+  if (!info?.supported) return card('claude-desktop', 'ai.claudeDesktop.title', h('p', {}, t('ai.claudeDesktop.desc')), msg('quiet', tOs('ai.unsupported')));
   let out = null;
   if (res?.busy) out = msg('info', t('common.working'));
   else if (res?.error) out = msg('error', res.error);
-  else if (res?.data?.supported === false) out = msg('quiet', t('ai.unsupported'));
+  else if (res?.data?.supported === false) out = msg('quiet', tOs('ai.unsupported'));
   else if (res?.data) {
     out = h(
       'div',
@@ -1013,7 +1031,7 @@ function claudeDesktopCard(info) {
             'div',
             { class: 'notice', role: 'alert' },
             h('p', { class: 'notice-title' }, t('ai.claudeDesktop.noticeTitle')),
-            h('p', {}, S.lang === 'en' ? res.data.notice : t('ai.claudeDesktop.notice')),
+            h('p', {}, S.lang === 'en' ? res.data.notice : tOs('ai.claudeDesktop.notice')),
           )
         : null,
     );
@@ -1037,7 +1055,7 @@ function claudeCodeCard(info) {
   let out = null;
   if (res?.busy) out = msg('info', t('common.working'));
   else if (res?.error) out = msg('error', res.error);
-  else if (res?.data?.supported === false) out = msg('quiet', t('ai.unsupported'));
+  else if (res?.data?.supported === false) out = msg('quiet', tOs('ai.unsupported'));
   else if (res?.data) {
     out = res.data.ok
       ? msg('ok', t('ai.claudeCode.runOk'))
@@ -1046,7 +1064,7 @@ function claudeCodeCard(info) {
   return card(
     'claude-code',
     'ai.claudeCode.title',
-    h('p', {}, t('ai.claudeCode.desc')),
+    h('p', {}, tOs('ai.claudeCode.desc')),
     h('div', { class: 'codebox codebox-block' }, h('span', { class: 'codebox-label' }, t('ai.claudeCode.commandLabel')), h('pre', {}, h('code', {}, command)), copyButton(() => command)),
     info?.available
       ? h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-secondary', id: 'run-claude-code', disabled: res?.busy, onclick: () => runIntegration('claudeCode', '/integrations/claude-code') }, t('ai.claudeCode.run')))
@@ -1123,7 +1141,7 @@ function httpCard(info) {
     snippet('cursor', 'ai.http.cursor'),
     snippet('vscode', 'ai.http.vscode'),
     snippet('generic', 'ai.http.generic'),
-    h('p', { class: 'note note-quiet' }, t('ai.http.tip')),
+    h('p', { class: 'note note-quiet' }, tOs('ai.http.tip')),
   );
 }
 
@@ -1332,7 +1350,7 @@ async function setAutostartNow(enabled) {
     S.autostart = { ...S.autostart, busy: false, error: e.message };
   }
   render();
-  announce(S.autostart.error ?? (S.autostart.enabled ? t('dashboard.autostartOn') : t('dashboard.autostartOff')));
+  announce(S.autostart.error ?? (S.autostart.enabled ? tOs('dashboard.autostartOn') : tOs('dashboard.autostartOff')));
 }
 
 function dashboardScreen() {
@@ -1408,7 +1426,7 @@ function dashboardScreen() {
   const autostartBlock = as.loading
     ? h('p', { class: 'loading' }, t('app.loading'))
     : as.supported === false
-      ? h('p', { class: 'note note-quiet' }, t('ai.unsupported'))
+      ? h('p', { class: 'note note-quiet' }, tOs('ai.unsupported'))
       : h(
           'div',
           { class: 'switch-row' },
@@ -1427,7 +1445,7 @@ function dashboardScreen() {
             },
             h('span', { class: 'switch-knob', 'aria-hidden': 'true' }),
           ),
-          h('span', { id: 'autostart-label', class: 'switch-label' }, t('dashboard.autostart')),
+          h('span', { id: 'autostart-label', class: 'switch-label' }, tOs('dashboard.autostart')),
         );
 
   return h(
@@ -1507,8 +1525,8 @@ function dashboardScreen() {
     remote ? null : h(
       'section',
       { class: 'panel', 'aria-labelledby': 'dash-auto' },
-      h('h2', { id: 'dash-auto' }, t('dashboard.autostart')),
-      h('p', { id: 'autostart-desc' }, t('dashboard.autostartDesc')),
+      h('h2', { id: 'dash-auto' }, tOs('dashboard.autostart')),
+      h('p', { id: 'autostart-desc' }, tOs('dashboard.autostartDesc')),
       autostartBlock,
       as.error ? msg('error', as.error) : null,
     ),

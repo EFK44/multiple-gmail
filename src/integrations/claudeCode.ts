@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
-import { extname } from 'node:path';
-import { system32Dir, systemBinary } from '../core/sysbin.js';
+import { homedir } from 'node:os';
+import { extname, posix } from 'node:path';
+import { isExecutableFile, system32Dir, systemBinary, type IsExecutable } from '../core/sysbin.js';
 import type { LaunchSpec } from './launch.js';
 
 export function claudeCodeArgs(spec: LaunchSpec): string[] {
@@ -17,10 +18,20 @@ export function claudeCodeCommand(spec: LaunchSpec): string {
 
 export type SpawnPlan = { file: string; args: string[]; verbatim: boolean };
 
-// How to run `claude`: an .exe directly (args array, no shell); a .cmd through cmd.exe /d /s /c with every
-// argument double-quoted. Characters that could break out of the quoting are rejected outright.
-export function claudeCodeSpawn(claudePath: string, spec: LaunchSpec, cmdExe: string): SpawnPlan {
+// How to run `claude`: on macOS and Linux the file itself (no shell; a script runs through its shebang). On Windows an
+// .exe directly (args array, no shell); a .cmd through cmd.exe /d /s /c with every argument double-quoted. Characters
+// that could break out of the quoting are rejected outright.
+export function claudeCodeSpawn(
+  claudePath: string,
+  spec: LaunchSpec,
+  cmdExe: string,
+  platform: NodeJS.Platform = process.platform,
+): SpawnPlan {
   const args = claudeCodeArgs(spec);
+  if (platform !== 'win32') {
+    if (!posix.isAbsolute(claudePath)) throw new Error('Unsupported claude launcher.');
+    return { file: claudePath, args, verbatim: false };
+  }
   const ext = extname(claudePath).toLowerCase();
   if (ext === '.exe') return { file: claudePath, args, verbatim: false };
   if (ext !== '.cmd') throw new Error('Unsupported claude launcher.');
@@ -34,12 +45,13 @@ export function claudeCodeSpawn(claudePath: string, spec: LaunchSpec, cmdExe: st
 export type RunResult = { code: number; stdout: string; stderr: string };
 
 function run(file: string, args: string[], verbatim: boolean): Promise<RunResult> {
+  const cwd = process.platform === 'win32' ? system32Dir() : homedir();
   return new Promise((resolve) => {
     execFile(
       file,
       args,
       // Note: the timeout kills only the process started here (cmd.exe for .cmd launchers), not its children.
-      { timeout: 60_000, windowsHide: true, windowsVerbatimArguments: verbatim, cwd: system32Dir(), maxBuffer: 1024 * 1024 },
+      { timeout: 60_000, windowsHide: true, windowsVerbatimArguments: verbatim, cwd, maxBuffer: 1024 * 1024 },
       (err, stdout, stderr) => {
         const raw = err ? (err as { code?: unknown }).code : 0;
         const code = typeof raw === 'number' ? raw : err ? 1 : 0;
@@ -54,8 +66,20 @@ export function runClaudeAdd(claudePath: string, spec: LaunchSpec): Promise<RunR
   return run(plan.file, plan.args, plan.verbatim);
 }
 
-// First .exe or .cmd that `where claude` reports (extensionless npm shims are shell scripts we cannot run).
+// macOS and Linux: the first absolute PATH entry holding an executable file named `claude`. Relative entries (".", "")
+// are skipped so the current directory can never supply the binary. No shell is involved.
+export function findClaudeOnPath(pathEnv: string | undefined, isExec: IsExecutable = isExecutableFile): string | null {
+  for (const dir of (pathEnv ?? '').split(':')) {
+    if (!dir || !posix.isAbsolute(dir)) continue;
+    const candidate = posix.join(dir, 'claude');
+    if (isExec(candidate)) return candidate;
+  }
+  return null;
+}
+
+// Windows: first .exe or .cmd that `where claude` reports (extensionless npm shims are shell scripts we cannot run).
 export function findClaude(): Promise<string | null> {
+  if (process.platform !== 'win32') return Promise.resolve(findClaudeOnPath(process.env.PATH));
   return new Promise((resolve) => {
     execFile(systemBinary('where'), ['claude'], { timeout: 10_000, windowsHide: true, cwd: system32Dir() }, (err, stdout) => {
       if (err) return resolve(null);

@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { hasMcpServer, IntegrationError, mergeMcpServer } from './jsonMerge.js';
 import type { LaunchSpec } from './launch.js';
@@ -51,9 +52,25 @@ export function claudeDesktopConfigCandidates(): string[] {
   return [...claudeDesktopStoreTargets(), ...(classic ? [classic] : []), ...legacyPackageFiles()];
 }
 
-// Every Store v3 config folder (file or not), plus the classic and old Store files that exist. With none of those,
-// the classic path (created on write).
-export function claudeDesktopTargets(): string[] {
+const isDir = (p: string) => {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+};
+
+// Windows: every Store v3 config folder (file or not), plus the classic and old Store files that exist. With none of
+// those, the classic path (created on write).
+// macOS: ~/Library/Application Support/Claude/claude_desktop_config.json (created on write).
+// Linux: ~/.config/Claude/claude_desktop_config.json, only when ~/.config/Claude exists (no official Linux build, so a
+// missing folder means unsupported, reported as no targets).
+export function claudeDesktopTargets(platform: NodeJS.Platform = process.platform): string[] {
+  if (platform === 'darwin') return [join(homedir(), 'Library', 'Application Support', 'Claude', FILE)];
+  if (platform !== 'win32') {
+    const dir = join(homedir(), '.config', 'Claude');
+    return platform === 'linux' && isDir(dir) ? [join(dir, FILE)] : [];
+  }
   const store = claudeDesktopStoreTargets();
   const classic = classicTarget();
   const others = [...(classic ? [classic] : []), ...legacyPackageFiles()].filter((f) => existsSync(f));
@@ -63,15 +80,15 @@ export function claudeDesktopTargets(): string[] {
 }
 
 // Configured only when every target has the entry: a stale copy in one place must not hide a missing one.
-export async function isClaudeDesktopConfigured(): Promise<boolean> {
-  const targets = claudeDesktopTargets();
+export async function isClaudeDesktopConfigured(platform: NodeJS.Platform = process.platform): Promise<boolean> {
+  const targets = claudeDesktopTargets(platform);
   if (targets.length === 0) return false;
   for (const f of targets) if (!(await hasMcpServer(f))) return false;
   return true;
 }
 
-export async function addToClaudeDesktop(spec: LaunchSpec) {
-  const targets = claudeDesktopTargets();
+export async function addToClaudeDesktop(spec: LaunchSpec, platform: NodeJS.Platform = process.platform) {
+  const targets = claudeDesktopTargets(platform);
   if (targets.length === 0) throw new IntegrationError('Could not find the Claude Desktop config location.');
   const written = [];
   for (const path of targets) {

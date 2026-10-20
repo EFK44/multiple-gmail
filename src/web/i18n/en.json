@@ -199,17 +199,23 @@
     "already": "Already added.",
     "changed": "Changed file: {path}",
     "unsupported": "This works only on Windows.",
+    "unsupported_mac": "This is not available on this system.",
+    "unsupported_linux": "This is not available on this system.",
     "claudeDesktop": {
       "title": "Claude Desktop",
       "desc": "The Claude app for your computer. One click adds multiple-gmail to it. A backup of its settings is made first.",
       "button": "Add to Claude Desktop",
       "done": "Added to Claude Desktop.",
       "noticeTitle": "One more step: restart Claude Desktop",
-      "notice": "Now fully quit Claude Desktop: right-click the Claude icon near the clock (system tray) and choose Quit. Then open Claude Desktop again."
+      "notice": "Now fully quit Claude Desktop: right-click the Claude icon near the clock (system tray) and choose Quit. Then open Claude Desktop again.",
+      "notice_mac": "Now fully quit Claude Desktop: in the menu bar choose Claude > Quit Claude (or press Cmd+Q). Then open Claude Desktop again.",
+      "notice_linux": "Now fully quit Claude Desktop, including any icon it keeps in the panel. Then open Claude Desktop again."
     },
     "claudeCode": {
       "title": "Claude Code",
       "desc": "Claude in the terminal. Run this command once in a terminal window (Command Prompt or PowerShell).",
+      "desc_mac": "Claude in the terminal. Run this command once in a terminal window (Terminal app).",
+      "desc_linux": "Claude in the terminal. Run this command once in a terminal window.",
       "commandLabel": "Command",
       "run": "Run it for me",
       "runOk": "Done. Claude Code now knows multiple-gmail. Restart Claude Code to use it.",
@@ -234,7 +240,9 @@
       "cursor": "Cursor (mcp.json)",
       "vscode": "VS Code (mcp.json)",
       "generic": "Any other app",
-      "tip": "Tip: turn on Start with Windows in the control panel, so these apps always find multiple-gmail."
+      "tip": "Tip: turn on Start with Windows in the control panel, so these apps always find multiple-gmail.",
+      "tip_mac": "Tip: turn on Start at login in the control panel, so these apps always find multiple-gmail.",
+      "tip_linux": "Tip: turn on Start at login in the control panel, so these apps always find multiple-gmail."
     },
     "web": {
       "title": "ChatGPT and claude.ai in the browser",
@@ -264,9 +272,17 @@
     "rotateBody": "The old key stops working right away. Apps that use it, like Cursor or VS Code, need the new key.",
     "rotated": "New key made. Paste it into your other apps.",
     "autostart": "Start with Windows",
+    "autostart_mac": "Start at login",
+    "autostart_linux": "Start at login",
     "autostartDesc": "Starts multiple-gmail quietly when you sign in to Windows, so apps like Cursor can always reach it. Claude Desktop and Gemini CLI do not need this.",
+    "autostartDesc_mac": "Starts multiple-gmail quietly the next time you log in to your Mac, so apps like Cursor can always reach it. Claude Desktop and Gemini CLI do not need this.",
+    "autostartDesc_linux": "Starts multiple-gmail quietly the next time you log in to your desktop, so apps like Cursor can always reach it. Claude Desktop and Gemini CLI do not need this.",
     "autostartOn": "Start with Windows is on.",
+    "autostartOn_mac": "Start at login is on.",
+    "autostartOn_linux": "Start at login is on.",
     "autostartOff": "Start with Windows is off.",
+    "autostartOff_mac": "Start at login is off.",
+    "autostartOff_linux": "Start at login is off.",
     "language": "Language",
     "ai": "Connect your AI app",
     "aiDesc": "Add multiple-gmail to Claude, Gemini CLI or other apps."

@@ -11,6 +11,12 @@ import { httpSnippets } from './snippets.js';
 export const KEY_PLACEHOLDER = '<YOUR_API_KEY>';
 const OUTPUT_LIMIT = 2048;
 export const CLAUDE_DESKTOP_NOTICE = 'Fully quit Claude Desktop (system tray > Quit) and reopen it.';
+const NOTICES: Partial<Record<NodeJS.Platform, string>> = {
+  win32: CLAUDE_DESKTOP_NOTICE,
+  darwin: 'Fully quit Claude Desktop (Claude menu > Quit Claude, or Cmd+Q) and reopen it.',
+  linux: 'Fully quit Claude Desktop and reopen it.',
+};
+const SUPPORTED: NodeJS.Platform[] = ['win32', 'darwin', 'linux'];
 
 export type IntegrationsDeps = {
   launch: () => LaunchSpec;
@@ -38,7 +44,8 @@ export function createIntegrationsApi(partial: Partial<IntegrationsDeps> = {}) {
     getAutostart: partial.getAutostart ?? getAutostart,
     setAutostart: partial.setAutostart ?? ((e) => setAutostart(e)),
   };
-  const windows = deps.platform === 'win32';
+  const supported = SUPPORTED.includes(deps.platform);
+  const platform = deps.platform;
 
   async function guarded(fn: () => Promise<ApiResponse>): Promise<ApiResponse> {
     try {
@@ -53,13 +60,15 @@ export function createIntegrationsApi(partial: Partial<IntegrationsDeps> = {}) {
     if (path === '/integrations' && method === 'GET') {
       return guarded(async () => {
         const spec = deps.launch();
-        const claude = windows ? await deps.findClaude() : null;
+        const claude = supported ? await deps.findClaude() : null;
         const port = await deps.port();
-        const targets = claudeDesktopTargets();
+        const targets = supported ? claudeDesktopTargets(platform) : [];
         return ok({
-          claudeDesktop: windows
-            ? { supported: true, configPath: targets[0] ?? null, configPaths: targets, configured: await isClaudeDesktopConfigured() }
-            : { supported: false },
+          // Linux has targets only when ~/.config/Claude exists.
+          claudeDesktop:
+            targets.length > 0
+              ? { supported: true, configPath: targets[0] ?? null, configPaths: targets, configured: await isClaudeDesktopConfigured(platform) }
+              : { supported: false },
           geminiCli: { configPath: geminiSettingsPath(), configured: await isGeminiConfigured() },
           claudeCode: { available: claude !== null, command: claudeCodeCommand(spec) },
           http: {
@@ -72,8 +81,10 @@ export function createIntegrationsApi(partial: Partial<IntegrationsDeps> = {}) {
     }
 
     if (path === '/integrations/claude-desktop' && method === 'POST') {
-      if (!windows) return ok({ supported: false });
-      return guarded(async () => ok({ ok: true, written: await addToClaudeDesktop(deps.launch()), notice: CLAUDE_DESKTOP_NOTICE }));
+      if (!supported || claudeDesktopTargets(platform).length === 0) return ok({ supported: false });
+      return guarded(async () =>
+        ok({ ok: true, written: await addToClaudeDesktop(deps.launch(), platform), notice: NOTICES[platform] ?? CLAUDE_DESKTOP_NOTICE }),
+      );
     }
 
     if (path === '/integrations/gemini-cli' && method === 'POST') {
@@ -81,7 +92,7 @@ export function createIntegrationsApi(partial: Partial<IntegrationsDeps> = {}) {
     }
 
     if (path === '/integrations/claude-code' && method === 'POST') {
-      if (!windows) return ok({ supported: false });
+      if (!supported) return ok({ supported: false });
       return guarded(async () => {
         const claude = await deps.findClaude();
         if (!claude) return fail(409, 'The claude command was not found on this computer.');
@@ -96,12 +107,12 @@ export function createIntegrationsApi(partial: Partial<IntegrationsDeps> = {}) {
     }
 
     if (path === '/autostart' && method === 'GET') {
-      if (!windows) return ok({ supported: false });
+      if (!supported) return ok({ supported: false });
       return guarded(async () => ok({ supported: true, enabled: await deps.getAutostart() }));
     }
 
     if (path === '/autostart' && method === 'POST') {
-      if (!windows) return ok({ supported: false });
+      if (!supported) return ok({ supported: false });
       let enabled: unknown;
       try {
         enabled = (body ? JSON.parse(body) : {})?.enabled;

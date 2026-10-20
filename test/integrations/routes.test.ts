@@ -104,11 +104,55 @@ describe('integrations routes', () => {
     expect(((await a('GET', '/integrations', ''))!.json as any).claudeDesktop.configPaths).toHaveLength(2);
   });
 
-  it('non-Windows claude-desktop and autostart say unsupported', async () => {
-    const a = api({ platform: 'linux' });
+  it('unsupported systems say unsupported for claude-desktop, claude-code and autostart', async () => {
+    const a = api({ platform: 'freebsd' });
     expect((await a('POST', '/integrations/claude-desktop', ''))!.json).toEqual({ supported: false });
+    expect((await a('POST', '/integrations/claude-code', ''))!.json).toEqual({ supported: false });
     expect((await a('GET', '/autostart', ''))!.json).toEqual({ supported: false });
     expect((await a('POST', '/autostart', '{"enabled":true}'))!.json).toEqual({ supported: false });
+    expect(((await a('GET', '/integrations', ''))!.json as any).claudeDesktop).toEqual({ supported: false });
+  });
+
+  describe('macOS and Linux', () => {
+    let prevHome: string | undefined;
+    beforeEach(() => {
+      prevHome = process.env.HOME;
+      process.env.HOME = join(dir, 'home');
+    });
+    afterEach(() => {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+    });
+
+    it('macOS supports Claude Desktop, Claude Code and autostart', async () => {
+      let enabled = false;
+      const a = api({
+        platform: 'darwin',
+        findClaude: async () => '/usr/local/bin/claude',
+        getAutostart: async () => enabled,
+        setAutostart: async (e) => void (enabled = e),
+      });
+      const j = (await a('GET', '/integrations', ''))!.json as any;
+      const target = join(dir, 'home', 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+      expect(j.claudeDesktop).toEqual({ supported: true, configPath: target, configPaths: [target], configured: false });
+      expect(j.claudeCode.available).toBe(true);
+      const post = (await a('POST', '/integrations/claude-desktop', ''))!.json as any;
+      expect(post.ok).toBe(true);
+      expect(post.notice).toMatch(/Cmd\+Q/);
+      expect(JSON.parse(await readFile(target, 'utf8')).mcpServers['multiple-gmail']).toEqual(launch);
+      expect((await a('POST', '/autostart', '{"enabled":true}'))!.json).toEqual({ supported: true, enabled: true });
+    });
+
+    it('Linux supports Claude Desktop only when ~/.config/Claude exists', async () => {
+      const a = api({ platform: 'linux' });
+      expect(((await a('GET', '/integrations', ''))!.json as any).claudeDesktop).toEqual({ supported: false });
+      expect((await a('POST', '/integrations/claude-desktop', ''))!.json).toEqual({ supported: false });
+      expect((await a('GET', '/autostart', ''))!.json).toEqual({ supported: true, enabled: false });
+      await mkdir(join(dir, 'home', '.config', 'Claude'), { recursive: true });
+      const j = (await a('GET', '/integrations', ''))!.json as any;
+      expect(j.claudeDesktop.configPath).toBe(join(dir, 'home', '.config', 'Claude', 'claude_desktop_config.json'));
+      expect(((await a('POST', '/integrations/claude-desktop', ''))!.json as any).ok).toBe(true);
+    });
   });
 
   it('claude-code POST is refused when claude is not found, and trims output when run', async () => {

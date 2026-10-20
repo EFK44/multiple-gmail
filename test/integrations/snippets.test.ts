@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { claudeCodeArgs, claudeCodeCommand, claudeCodeSpawn } from '../../src/integrations/claudeCode.js';
+import { claudeCodeArgs, claudeCodeCommand, claudeCodeSpawn, findClaudeOnPath } from '../../src/integrations/claudeCode.js';
 import { stdioLaunchSpec } from '../../src/integrations/launch.js';
 import { httpSnippets } from '../../src/integrations/snippets.js';
 
@@ -18,11 +18,11 @@ describe('claudeCodeCommand', () => {
 
 describe('claudeCodeSpawn', () => {
   it('runs an .exe directly with an args array', () => {
-    const r = claudeCodeSpawn('C:\\bin\\claude.exe', spec, CMD);
+    const r = claudeCodeSpawn('C:\\bin\\claude.exe', spec, CMD, 'win32');
     expect(r).toEqual({ file: 'C:\\bin\\claude.exe', args: claudeCodeArgs(spec), verbatim: false });
   });
   it('runs a .cmd through cmd.exe /d /s /c with every argument quoted', () => {
-    const r = claudeCodeSpawn('C:\\npm\\claude.cmd', spec, CMD);
+    const r = claudeCodeSpawn('C:\\npm\\claude.cmd', spec, CMD, 'win32');
     expect(r.file).toBe(CMD);
     expect(r.verbatim).toBe(true);
     expect(r.args.slice(0, 4)).toEqual(['/d', '/v:off', '/s', '/c']);
@@ -31,15 +31,26 @@ describe('claudeCodeSpawn', () => {
     );
   });
   it('rejects quotes and percent signs', () => {
-    expect(() => claudeCodeSpawn('C:\\n"pm\\claude.cmd', spec, CMD)).toThrow();
-    expect(() => claudeCodeSpawn('C:\\npm\\claude.cmd', { command: 'C:\\%PATH%\\x.exe', args: ['--stdio'] }, CMD)).toThrow();
-    expect(() => claudeCodeSpawn('C:\\npm\\claude.cmd', { command: 'C:\\a"b.exe', args: ['--stdio'] }, CMD)).toThrow();
+    expect(() => claudeCodeSpawn('C:\\n"pm\\claude.cmd', spec, CMD, 'win32')).toThrow();
+    expect(() => claudeCodeSpawn('C:\\npm\\claude.cmd', { command: 'C:\\%PATH%\\x.exe', args: ['--stdio'] }, CMD, 'win32')).toThrow();
+    expect(() => claudeCodeSpawn('C:\\npm\\claude.cmd', { command: 'C:\\a"b.exe', args: ['--stdio'] }, CMD, 'win32')).toThrow();
   });
   it('rejects exclamation marks', () => {
-    expect(() => claudeCodeSpawn('C:\\npm\\claude.cmd', { command: 'C:\\a!b.exe', args: ['--stdio'] }, CMD)).toThrow();
+    expect(() => claudeCodeSpawn('C:\\npm\\claude.cmd', { command: 'C:\\a!b.exe', args: ['--stdio'] }, CMD, 'win32')).toThrow();
+  });
+  it('on macOS and Linux runs the claude file itself with an args array, no shell', () => {
+    const posixSpec = { command: '/Users/x/Masaüstü/a b/multiple-gmail', args: ['--stdio'] };
+    for (const p of ['darwin', 'linux'] as const) {
+      expect(claudeCodeSpawn('/usr/local/bin/claude', posixSpec, CMD, p)).toEqual({
+        file: '/usr/local/bin/claude',
+        args: claudeCodeArgs(posixSpec),
+        verbatim: false,
+      });
+      expect(() => claudeCodeSpawn('claude', posixSpec, CMD, p)).toThrow();
+    }
   });
   it('rejects an unknown extension', () => {
-    expect(() => claudeCodeSpawn('C:\\npm\\claude.ps1', spec, CMD)).toThrow();
+    expect(() => claudeCodeSpawn('C:\\npm\\claude.ps1', spec, CMD, 'win32')).toThrow();
   });
 });
 
@@ -79,5 +90,15 @@ describe('stdioLaunchSpec', () => {
     expect(s.args.at(-1)).toBe('--stdio');
     expect(s.args[0]).toMatch(/cli\.mjs$/);
     expect(s.args[1]).toMatch(/main\.ts$/);
+  });
+});
+
+describe('findClaudeOnPath', () => {
+  it('returns the first absolute PATH entry with an executable claude, skipping relative entries', () => {
+    const exec = new Set(['/home/x/.local/bin/claude', '/usr/local/bin/claude', 'bin/claude']);
+    const isExec = (p: string) => exec.has(p);
+    expect(findClaudeOnPath('.:bin::/usr/bin:/home/x/.local/bin:/usr/local/bin', isExec)).toBe('/home/x/.local/bin/claude');
+    expect(findClaudeOnPath('/usr/bin', isExec)).toBeNull();
+    expect(findClaudeOnPath(undefined, isExec)).toBeNull();
   });
 });

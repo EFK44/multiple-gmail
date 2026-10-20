@@ -199,17 +199,23 @@
     "already": "Zaten eklenmiş.",
     "changed": "Değişen dosya: {path}",
     "unsupported": "Bu sadece Windows'ta çalışır.",
+    "unsupported_mac": "Bu, bu sistemde kullanılamıyor.",
+    "unsupported_linux": "Bu, bu sistemde kullanılamıyor.",
     "claudeDesktop": {
       "title": "Claude Desktop",
       "desc": "Bilgisayarındaki Claude uygulaması. Tek tıkla multiple-gmail'i ona ekler. Önce ayarlarının yedeği alınır.",
       "button": "Claude Desktop'a ekle",
       "done": "Claude Desktop'a eklendi.",
       "noticeTitle": "Bir adım daha: Claude Desktop'ı yeniden başlat",
-      "notice": "Şimdi Claude Desktop'ı tamamen kapat: saatin yanındaki Claude simgesine (sistem tepsisi) sağ tıkla ve \"Quit\" (Çık) seç. Sonra Claude Desktop'ı yeniden aç."
+      "notice": "Şimdi Claude Desktop'ı tamamen kapat: saatin yanındaki Claude simgesine (sistem tepsisi) sağ tıkla ve \"Quit\" (Çık) seç. Sonra Claude Desktop'ı yeniden aç.",
+      "notice_mac": "Şimdi Claude Desktop'ı tamamen kapat: menü çubuğunda Claude > Quit Claude seç (ya da Cmd+Q bas). Sonra Claude Desktop'ı yeniden aç.",
+      "notice_linux": "Şimdi Claude Desktop'ı, paneldeki simgesi dahil tamamen kapat. Sonra Claude Desktop'ı yeniden aç."
     },
     "claudeCode": {
       "title": "Claude Code",
       "desc": "Terminalde çalışan Claude. Bu komutu bir terminal penceresinde (Komut İstemi ya da PowerShell) bir kez çalıştır.",
+      "desc_mac": "Terminaldeki Claude. Bu komutu bir terminal penceresinde (Terminal uygulaması) bir kez çalıştır.",
+      "desc_linux": "Terminaldeki Claude. Bu komutu bir terminal penceresinde bir kez çalıştır.",
       "commandLabel": "Komut",
       "run": "Benim yerime çalıştır",
       "runOk": "Tamam. Claude Code artık multiple-gmail'i tanıyor. Kullanmak için Claude Code'u yeniden başlat.",
@@ -234,7 +240,9 @@
       "cursor": "Cursor (mcp.json)",
       "vscode": "VS Code (mcp.json)",
       "generic": "Başka bir uygulama",
-      "tip": "İpucu: kontrol panelinde \"Windows ile başlat\" ayarını aç; böylece bu uygulamalar multiple-gmail'i her zaman bulur."
+      "tip": "İpucu: kontrol panelinde \"Windows ile başlat\" ayarını aç; böylece bu uygulamalar multiple-gmail'i her zaman bulur.",
+      "tip_mac": "İpucu: kontrol panelinde \"Oturum açılınca başlat\" ayarını aç; böylece bu uygulamalar multiple-gmail'i her zaman bulur.",
+      "tip_linux": "İpucu: kontrol panelinde \"Oturum açılınca başlat\" ayarını aç; böylece bu uygulamalar multiple-gmail'i her zaman bulur."
     },
     "web": {
       "title": "Tarayıcıdaki ChatGPT ve claude.ai",
@@ -264,9 +272,17 @@
     "rotateBody": "Eski anahtar hemen çalışmaz olur. Onu kullanan uygulamalar (Cursor ya da VS Code gibi) yeni anahtara ihtiyaç duyar.",
     "rotated": "Yeni anahtar oluşturuldu. Diğer uygulamalarına yapıştır.",
     "autostart": "Windows ile başlat",
+    "autostart_mac": "Oturum açılınca başlat",
+    "autostart_linux": "Oturum açılınca başlat",
     "autostartDesc": "Windows'a giriş yaptığında multiple-gmail'i sessizce başlatır; böylece Cursor gibi uygulamalar ona her zaman ulaşır. Claude Desktop ve Gemini CLI'nın buna ihtiyacı yoktur.",
+    "autostartDesc_mac": "Mac'ine bir sonraki girişinde multiple-gmail'i sessizce başlatır; böylece Cursor gibi uygulamalar ona her zaman ulaşır. Claude Desktop ve Gemini CLI'nın buna ihtiyacı yoktur.",
+    "autostartDesc_linux": "Masaüstüne bir sonraki girişinde multiple-gmail'i sessizce başlatır; böylece Cursor gibi uygulamalar ona her zaman ulaşır. Claude Desktop ve Gemini CLI'nın buna ihtiyacı yoktur.",
     "autostartOn": "Windows ile başlat açık.",
+    "autostartOn_mac": "Oturum açılınca başlat açık.",
+    "autostartOn_linux": "Oturum açılınca başlat açık.",
     "autostartOff": "Windows ile başlat kapalı.",
+    "autostartOff_mac": "Oturum açılınca başlat kapalı.",
+    "autostartOff_linux": "Oturum açılınca başlat kapalı.",
     "language": "Dil",
     "ai": "Yapay zekâ uygulamanı bağla",
     "aiDesc": "multiple-gmail'i Claude'a, Gemini CLI'ya ya da diğer uygulamalara ekle."

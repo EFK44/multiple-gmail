@@ -43,6 +43,16 @@ describe('wizard i18n', () => {
     expect(used.length).toBeGreaterThan(20);
     for (const k of used) expect(en.has(k), k).toBe(true);
   });
+
+  it('every tOs() key used in app.js has a Windows, macOS and Linux text in both languages', async () => {
+    const src = await readFile(web('app.js'), 'utf8');
+    const used = [...src.matchAll(/\btOs\('([a-zA-Z0-9_.]+)'/g)].map((m) => m[1]);
+    expect(used.length).toBeGreaterThan(5);
+    for (const lang of ['en', 'tr']) {
+      const dict = flatten(await json(`i18n/${lang}.json`));
+      for (const k of used) for (const v of [k, `${k}_mac`, `${k}_linux`]) expect(dict.has(v), `${lang}:${v}`).toBe(true);
+    }
+  });
 });
 
 // Keys app.js builds with template strings; the literal-key test above cannot see them.

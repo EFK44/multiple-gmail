@@ -39,12 +39,12 @@ const store = (pub = 'pzs8sxrjxfjjc') => join(local, 'Claude-Data', `claude_${pu
 
 describe('claudeDesktopTargets', () => {
   it('falls back to the classic %APPDATA%\\Claude path when nothing exists', () => {
-    expect(claudeDesktopTargets()).toEqual([classic()]);
+    expect(claudeDesktopTargets('win32')).toEqual([classic()]);
   });
 
   it('targets a Store v3 Claude-Data folder even when the file does not exist yet', async () => {
     await mkdir(join(local, 'Claude-Data', 'claude_pzs8sxrjxfjjc'), { recursive: true });
-    expect(claudeDesktopTargets()).toEqual([store()]);
+    expect(claudeDesktopTargets('win32')).toEqual([store()]);
   });
 
   it('includes every existing Claude-Data config and an existing classic config', async () => {
@@ -55,14 +55,14 @@ describe('claudeDesktopTargets', () => {
     await writeFile(join(local, 'Claude-Data', 'stray.json'), '{}');
     await mkdir(join(roaming, 'Claude'), { recursive: true });
     await writeFile(classic(), '{}');
-    expect(claudeDesktopTargets()).toEqual([store('aaa'), store('bbb'), classic()]);
+    expect(claudeDesktopTargets('win32')).toEqual([store('aaa'), store('bbb'), classic()]);
   });
 
   it('does not target the old Packages LocalCache path unless that file exists', async () => {
     const pkg = join(local, 'Packages', 'Claude_pzs8sxrjxfjjc', 'LocalCache', 'Roaming', 'Claude');
     await mkdir(pkg, { recursive: true });
     await mkdir(join(local, 'Claude-Data', 'claude_pzs8sxrjxfjjc'), { recursive: true });
-    expect(claudeDesktopTargets()).toEqual([store()]);
+    expect(claudeDesktopTargets('win32')).toEqual([store()]);
   });
 });
 
@@ -75,8 +75,8 @@ describe('addToClaudeDesktop on Store v3', () => {
       someFlag: 1,
     };
     await writeFile(store(), JSON.stringify(prefs, null, 2));
-    expect(await isClaudeDesktopConfigured()).toBe(false);
-    const written = await addToClaudeDesktop(spec);
+    expect(await isClaudeDesktopConfigured('win32')).toBe(false);
+    const written = await addToClaudeDesktop(spec, 'win32');
     expect(written.map((w) => w.path)).toEqual([store()]);
     expect(typeof written[0].backup).toBe('string');
     const doc = JSON.parse(await readFile(store(), 'utf8'));
@@ -85,12 +85,12 @@ describe('addToClaudeDesktop on Store v3', () => {
       mcpServers: { other: prefs.mcpServers.other, 'multiple-gmail': spec },
       someFlag: 1,
     });
-    expect(await isClaudeDesktopConfigured()).toBe(true);
+    expect(await isClaudeDesktopConfigured('win32')).toBe(true);
   });
 
   it('creates the file inside an existing Claude-Data folder', async () => {
     await mkdir(join(local, 'Claude-Data', 'claude_pzs8sxrjxfjjc'), { recursive: true });
-    const written = await addToClaudeDesktop(spec);
+    const written = await addToClaudeDesktop(spec, 'win32');
     expect(written).toEqual([{ path: store(), backup: null, created: true }]);
     expect(JSON.parse(await readFile(store(), 'utf8'))).toEqual({ mcpServers: { 'multiple-gmail': spec } });
   });
@@ -99,8 +99,47 @@ describe('addToClaudeDesktop on Store v3', () => {
     await mkdir(join(local, 'Claude-Data', 'claude_pzs8sxrjxfjjc'), { recursive: true });
     await mkdir(join(roaming, 'Claude'), { recursive: true });
     await writeFile(classic(), JSON.stringify({ mcpServers: { 'multiple-gmail': spec } }));
-    expect(await isClaudeDesktopConfigured()).toBe(false);
-    await addToClaudeDesktop(spec);
-    expect(await isClaudeDesktopConfigured()).toBe(true);
+    expect(await isClaudeDesktopConfigured('win32')).toBe(false);
+    await addToClaudeDesktop(spec, 'win32');
+    expect(await isClaudeDesktopConfigured('win32')).toBe(true);
+  });
+});
+
+describe('Claude Desktop on macOS and Linux', () => {
+  let home: string;
+  const prev: Record<string, string | undefined> = {};
+  beforeEach(async () => {
+    home = join(root, 'Masaüstü home');
+    await mkdir(home, { recursive: true });
+    for (const k of ['HOME', 'USERPROFILE']) prev[k] = process.env[k];
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  it('macOS writes ~/Library/Application Support/Claude/claude_desktop_config.json', async () => {
+    const target = join(home, 'Library', 'Application Support', 'Claude', FILE);
+    expect(claudeDesktopTargets('darwin')).toEqual([target]);
+    expect(await isClaudeDesktopConfigured('darwin')).toBe(false);
+    const posixSpec = { command: '/Applications/a b/multiple-gmail', args: ['--stdio'] };
+    expect(await addToClaudeDesktop(posixSpec, 'darwin')).toEqual([{ path: target, backup: null, created: true }]);
+    expect(JSON.parse(await readFile(target, 'utf8'))).toEqual({ mcpServers: { 'multiple-gmail': posixSpec } });
+    expect(await isClaudeDesktopConfigured('darwin')).toBe(true);
+  });
+
+  it('Linux targets ~/.config/Claude only when that folder exists', async () => {
+    expect(claudeDesktopTargets('linux')).toEqual([]);
+    expect(await isClaudeDesktopConfigured('linux')).toBe(false);
+    await mkdir(join(home, '.config', 'Claude'), { recursive: true });
+    expect(claudeDesktopTargets('linux')).toEqual([join(home, '.config', 'Claude', FILE)]);
+  });
+
+  it('other systems have no target', () => {
+    expect(claudeDesktopTargets('freebsd')).toEqual([]);
   });
 });
