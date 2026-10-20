@@ -1,11 +1,14 @@
-import { randomBytes } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { createCipheriv, randomBytes } from 'node:crypto';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
+import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { open, seal } from '../../src/core/crypto.js';
 import { keyFromEnv } from '../../src/core/masterKey.js';
 import { ensureSecureDir } from '../../src/core/secureDir.js';
+import { system32Dir, systemBinary, systemRoot } from '../../src/core/sysbin.js';
 
 const isWin = process.platform === 'win32';
 
@@ -54,6 +57,14 @@ describe('seal/open', () => {
     expect(() => open(randomBytes(32), sealed)).toThrow();
   });
 
+  it('binds the version byte as AAD (blob sealed without AAD does not open)', () => {
+    const iv = randomBytes(12);
+    const c = createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
+    const ct = Buffer.concat([c.update(Buffer.from('secret')), c.final()]);
+    const noAad = Buffer.concat([Buffer.from([0x01]), iv, c.getAuthTag(), ct]);
+    expect(() => open(key, noAad)).toThrow();
+  });
+
   it('throws on truncated input and bad key length', () => {
     expect(() => open(key, Buffer.alloc(10))).toThrow();
     expect(() => seal(randomBytes(16), Buffer.from('x'))).toThrow();
@@ -82,6 +93,42 @@ describe('ensureSecureDir', () => {
     expect((await stat(dir)).isDirectory()).toBe(true);
     await ensureSecureDir(dir);
     expect((await stat(dir)).isDirectory()).toBe(true);
+  });
+});
+
+describe('systemBinary', () => {
+  it('resolves absolute paths under SystemRoot', () => {
+    const root = systemRoot();
+    expect(isAbsolute(root)).toBe(true);
+    for (const name of ['powershell', 'icacls', 'explorer', 'where']) {
+      const p = systemBinary(name);
+      expect(isAbsolute(p)).toBe(true);
+      const rel = relative(root, p);
+      expect(rel.startsWith('..')).toBe(false);
+      expect(isAbsolute(rel)).toBe(false);
+    }
+    expect(systemBinary('powershell')).toBe(join(system32Dir(), 'WindowsPowerShell', 'v1.0', 'powershell.exe'));
+    expect(systemBinary('icacls')).toBe(join(system32Dir(), 'icacls.exe'));
+    expect(() => systemBinary('cmd')).toThrow();
+  });
+});
+
+describe.skipIf(!isWin)('ensureSecureDir ACL (win32)', () => {
+  it('leaves only the current user with full control, no inherited entries', async () => {
+    const dir = join(root, 'secure');
+    await ensureSecureDir(dir);
+    const { stdout } = await promisify(execFile)(systemBinary('icacls'), [dir], { windowsHide: true });
+    expect(stdout).toContain(':(OI)(CI)(F)');
+    expect(stdout).not.toContain('(I)');
+    expect(stdout).not.toMatch(/BUILTIN\\Users/i);
+    expect(stdout).not.toMatch(/Authenticated Users/i);
+  });
+
+  it('concurrent callers both wait for the ACL step', async () => {
+    const dir = join(root, 'race');
+    await Promise.all([ensureSecureDir(dir), ensureSecureDir(dir)]);
+    const { stdout } = await promisify(execFile)(systemBinary('icacls'), [dir], { windowsHide: true });
+    expect(stdout).not.toContain('(I)');
   });
 });
 

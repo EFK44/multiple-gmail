@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { writeFileAtomic } from './fsx.js';
 import { dataDir } from './paths.js';
 import { ensureSecureDir } from './secureDir.js';
+import { system32Dir, systemBinary } from './sysbin.js';
 
 const KEY_LEN = 32;
 const KEY_FILE = 'master.key.dpapi';
@@ -90,9 +91,9 @@ function dpapi(op: 'Protect' | 'Unprotect', input: Buffer): Promise<Buffer> {
   ].join('; ');
   return new Promise((resolve, reject) => {
     const child = execFile(
-      'powershell.exe',
+      systemBinary('powershell'),
       ['-NoProfile', '-NonInteractive', '-Command', script],
-      { windowsHide: true, maxBuffer: 1024 * 1024 },
+      { windowsHide: true, maxBuffer: 1024 * 1024, cwd: system32Dir() },
       (err, stdout, stderr) => {
         if (err) {
           reject(new Error(`DPAPI ${op} failed: ${String(stderr).trim() || err.message}`));
