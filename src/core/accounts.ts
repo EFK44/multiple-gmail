@@ -1,4 +1,4 @@
-import { loadConfig, saveConfig, NameError, getAccount, validateId, validateName } from './config.js';
+import { loadConfig, saveConfig, NameError, getAccount, validateId, validateName, withConfigLock } from './config.js';
 import { deleteToken, loadToken, type StoredToken } from './secrets.js';
 
 export type ConnectedAccount = { id: string; name: string; email: string };
@@ -54,17 +54,23 @@ export async function removeAccount(id: string, deps: RemoveDeps = {}): Promise<
   }
 
   await deleteToken(a);
-  const fresh = await loadConfig();
-  if (getAccount(fresh, a) || fresh.defaultAccount === a) {
-    delete fresh.accounts[a];
-    if (fresh.defaultAccount === a) fresh.defaultAccount = null;
-    await saveConfig(fresh);
-  }
+  await withConfigLock(async () => {
+    const fresh = await loadConfig();
+    if (getAccount(fresh, a) || fresh.defaultAccount === a) {
+      delete fresh.accounts[a];
+      if (fresh.defaultAccount === a) fresh.defaultAccount = null;
+      await saveConfig(fresh);
+    }
+  });
   return { revoked };
 }
 
 // Changes the display name only; the id (token file, caches) stays.
-export async function renameAccount(id: string, newName: string): Promise<ConnectedAccount> {
+export function renameAccount(id: string, newName: string): Promise<ConnectedAccount> {
+  return withConfigLock(() => renameLocked(id, newName));
+}
+
+async function renameLocked(id: string, newName: string): Promise<ConnectedAccount> {
   const cfg = await loadConfig();
   const entry = getAccount(cfg, id);
   if (!entry) throw new AccountError('unknown_account', `No account with id "${id}".`);

@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { gmail } from '@googleapis/gmail';
 import { CodeChallengeMethod, OAuth2Client } from 'google-auth-library';
 import { AccountError, REVOKE_URL, type ConnectedAccount } from './accounts.js';
-import { findAccount, getAccount, loadConfig, NameError, newAccountId, sameName, saveConfig, validateId, validateName } from './config.js';
+import { findAccount, getAccount, loadConfig, NameError, newAccountId, sameName, saveConfig, validateId, validateName, withConfigLock } from './config.js';
 import { loadClient, saveToken, type OAuthClient } from './secrets.js';
 
 export type { ConnectedAccount } from './accounts.js';
@@ -289,43 +289,48 @@ function completeAuth(c: CompleteArgs): (code: string) => Promise<ConnectedAccou
     c.networkDone();
 
     const refreshToken = tokens.refreshToken;
-    const now = await loadConfig();
-    // Revoking a refresh token revokes the whole grant, so never do it for an email that is already connected.
-    const alreadyConnected = Object.values(now.accounts).some((entry) => sameEmail(entry.email, email));
-    const reject = async (message: string): Promise<never> => {
-      if (!alreadyConnected) await revokeQuietly(doFetch, refreshToken);
-      throw new Error(message);
-    };
-    if (c.cancelled()) throw new Error('Google sign-in timed out.');
-    const current = getAccount(now, a);
-    if (c.reconnect) {
-      if (!current) return reject(`No account "${name}" to reconnect.`);
-      if (!sameEmail(current.email, email)) {
-        return reject(`Signed in as ${email} but the account "${current.name}" belongs to ${current.email}`);
+    // Checks and the config write run under the config lock, so a concurrent sign-in or rename cannot be lost.
+    return withConfigLock(async () => {
+      const now = await loadConfig();
+      // Revoking a refresh token revokes the whole grant, so never do it for an email that is already connected.
+      const alreadyConnected = Object.values(now.accounts).some((entry) => sameEmail(entry.email, email));
+      const reject = async (message: string): Promise<never> => {
+        if (!alreadyConnected) await revokeQuietly(doFetch, refreshToken);
+        throw new Error(message);
+      };
+      if (c.cancelled()) throw new Error('Google sign-in timed out.');
+      const current = getAccount(now, a);
+      if (c.reconnect) {
+        if (!current) return reject(`No account "${name}" to reconnect.`);
+        if (!sameEmail(current.email, email)) {
+          return reject(`Signed in as ${email} but the account "${current.name}" belongs to ${current.email}`);
+        }
+      } else if (current) {
+        return reject(`The account "${current.name}" already exists, use Reconnect.`);
       }
-    } else if (current) {
-      return reject(`The account "${current.name}" already exists, use Reconnect.`);
-    }
-    for (const [other, entry] of Object.entries(now.accounts)) {
-      if (other !== a && sameEmail(entry.email, email)) {
-        return reject(`This Google account (${email}) is already connected as "${entry.name}".`);
+      for (const [other, entry] of Object.entries(now.accounts)) {
+        if (other !== a && sameEmail(entry.email, email)) {
+          return reject(`This Google account (${email}) is already connected as "${entry.name}".`);
+        }
+        if (!c.reconnect && other !== a && (sameName(entry.name, name) || sameName(other, name))) {
+          return reject(`An account named "${entry.name}" already exists.`);
+        }
       }
-      if (!c.reconnect && other !== a && (sameName(entry.name, name) || sameName(other, name))) {
-        return reject(`An account named "${entry.name}" already exists.`);
-      }
-    }
 
-    if (c.cancelled()) throw new Error('Google sign-in timed out.');
-    await saveToken(a, {
-      refreshToken: tokens.refreshToken,
-      ...(tokens.accessToken ? { accessToken: tokens.accessToken } : {}),
-      ...(typeof tokens.expiryDate === 'number' ? { expiryDate: tokens.expiryDate } : {}),
-      scope: tokens.scope ?? GMAIL_SCOPE,
+      if (c.cancelled()) throw new Error('Google sign-in timed out.');
+      await saveToken(a, {
+        refreshToken,
+        ...(tokens.accessToken ? { accessToken: tokens.accessToken } : {}),
+        ...(typeof tokens.expiryDate === 'number' ? { expiryDate: tokens.expiryDate } : {}),
+        scope: tokens.scope ?? GMAIL_SCOPE,
+      });
+      const finalName = current?.name ?? name;
+      // Re-load right before saving: the token write above awaited, and another process may have changed the file.
+      const fresh = await loadConfig();
+      fresh.accounts[a] = { name: finalName, email, addedAt: current?.addedAt ?? new Date().toISOString() };
+      await saveConfig(fresh);
+      return { id: a, name: finalName, email };
     });
-    const finalName = current?.name ?? name;
-    now.accounts[a] = { name: finalName, email, addedAt: current?.addedAt ?? new Date().toISOString() };
-    await saveConfig(now);
-    return { id: a, name: finalName, email };
   };
 }
 
@@ -447,11 +452,9 @@ export async function startLoopbackAuth(
     if (reqUrl.pathname !== '/callback') return sendPlain(res, 404);
     if (req.method !== 'GET') return sendPlain(res, 405);
     const q = reqUrl.searchParams;
-    const qLang = q.get('lang');
-    const pageLang: 'en' | 'tr' = qLang === 'en' || qLang === 'tr' ? qLang : lang;
     const state = q.get('state');
     if (settled || handling || !state || !safeEqual(state, auth.state)) {
-      return sendPage(res, 400, pageLang, 'invalid');
+      return sendPage(res, 400, lang, 'invalid');
     }
     handling = true;
     // The flow timer is replaced by a bound on the exchange itself, so a hung Google call cannot leave the server open.
@@ -466,21 +469,21 @@ export async function startLoopbackAuth(
     const error = q.get('error');
     if (error) {
       const err = callbackError(error);
-      sendPage(res, 200, pageLang, err.code === 'unknown' ? 'failed' : (err.code as PageKind));
+      sendPage(res, 200, lang, err.code === 'unknown' ? 'failed' : (err.code as PageKind));
       return finish({ err });
     }
     const code = q.get('code');
     if (!code) {
-      sendPage(res, 400, pageLang, 'failed');
+      sendPage(res, 400, lang, 'failed');
       return finish({ err: new AuthFlowError('unknown', 'Google did not return an authorization code. Try again.') });
     }
     complete(code).then(
       (acct) => {
-        sendPage(res, 200, pageLang, 'success');
+        sendPage(res, 200, lang, 'success');
         finish({ ok: acct });
       },
       (err: unknown) => {
-        sendPage(res, 200, pageLang, 'failed');
+        sendPage(res, 200, lang, 'failed');
         finish({ err: err instanceof Error ? err : new Error('Connecting the account failed.') });
       },
     );
@@ -580,8 +583,7 @@ export function createWebAuth(o: { redirectUri: string; deps?: LoopbackDeps }): 
     const state = q.get('state');
     const key = state ? createHash('sha256').update(state, 'utf8').digest('hex') : '';
     const flow = key ? flows.get(key) : undefined;
-    const qLang = q.get('lang');
-    const lang: 'en' | 'tr' = qLang === 'en' || qLang === 'tr' ? qLang : (flow?.lang ?? 'en');
+    const lang: 'en' | 'tr' = flow?.lang ?? 'en';
     if (!flow || flow.isSettled()) return sendPage(res, 400, lang, 'invalid');
     // Single use: a second callback with the same state is invalid.
     flows.delete(key);

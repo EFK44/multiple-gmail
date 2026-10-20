@@ -1,5 +1,5 @@
 import { removeAccount, renameAccount } from '../core/accounts.js';
-import { getAccount, loadConfig, NameError, newAccountId, sameName, saveConfig, validateId, validateName } from '../core/config.js';
+import { getAccount, loadConfig, NameError, newAccountId, sameName, updateConfig, validateId, validateName } from '../core/config.js';
 import { AccountError, AuthFlowError, startLoopbackAuth } from '../core/googleAuth.js';
 import {
   getLocalApiKey,
@@ -306,8 +306,9 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
       const body = parseJson(req.body);
       const language = body?.language;
       if (language !== 'en' && language !== 'tr') return fail(400, 'language must be "en" or "tr".');
-      const cfg = await loadConfig();
-      await saveConfig({ ...cfg, language });
+      await updateConfig((cfg) => {
+        cfg.language = language;
+      });
       return ok({ ok: true, language });
     }
 

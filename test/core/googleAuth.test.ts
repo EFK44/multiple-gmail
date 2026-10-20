@@ -185,6 +185,26 @@ describe('startLoopbackAuth', () => {
     await expect(fetch(cb)).rejects.toThrow();
   });
 
+  it('ignores a ?lang query on the callback: the page language comes from the options', async () => {
+    const { url, done } = await startLoopbackAuth('alpha', { id: 'alpha', deps: deps().deps, lang: 'tr' });
+    const res = await fetch(callbackUrl(url, { state: stateOf(url), code: 'code-1', lang: 'en' }));
+    expect(await res.text()).toContain('lang="tr"');
+    await done;
+  });
+
+  it('concurrent sign-ins for two new accounts both land in the config', async () => {
+    const mk = (email: string) => deps({ email, tokens: { refreshToken: `r-${email}`, accessToken: 'a', scope: GMAIL_SCOPE } }).deps;
+    const a = await startLoopbackAuth('alpha', { id: 'alpha', deps: mk('alpha@example.com') });
+    const b = await startLoopbackAuth('beta', { id: 'beta', deps: mk('beta@example.com') });
+    await Promise.all([
+      fetch(callbackUrl(a.url, { state: stateOf(a.url), code: 'c1' })),
+      fetch(callbackUrl(b.url, { state: stateOf(b.url), code: 'c2' })),
+    ]);
+    await Promise.all([a.done, b.done]);
+    const cfg = await loadConfig();
+    expect(Object.keys(cfg.accounts).sort()).toEqual(['alpha', 'beta']);
+  });
+
   it('a free-form name gets a random id; the token is stored under the id', async () => {
     await seedConfig({ beta: { email: 'other@example.com', addedAt: '2026-01-01T00:00:00.000Z' } });
     const { url, id, done } = await startLoopbackAuth('  İş   Hesabı ', { deps: deps().deps });

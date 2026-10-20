@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import * as z from 'zod/v4';
@@ -59,12 +60,36 @@ export async function loadConfig(): Promise<AppConfig> {
   // Best effort: a failed save must not stop the app; the next load migrates again.
   if (migrated) {
     try {
-      await saveConfig(config);
+      await withConfigLock(() => saveConfig(config));
     } catch (e) {
       console.error(`multiple-gmail: could not save the migrated config ${file}: ${(e as Error).message}`);
     }
   }
   return config;
+}
+
+// ---------- read-modify-write ----------
+
+// One in-process queue for every load-modify-save of the config, so two concurrent writers (two sign-ins finishing,
+// a rename during a sign-in) cannot drop each other's change. Reentrant: code already holding the lock runs directly.
+let configQueue: Promise<unknown> = Promise.resolve();
+const holding = new AsyncLocalStorage<boolean>();
+
+export function withConfigLock<T>(fn: () => Promise<T>): Promise<T> {
+  if (holding.getStore()) return fn();
+  const run = configQueue.then(() => holding.run(true, fn));
+  configQueue = run.catch(() => {});
+  return run;
+}
+
+// Loads the config, lets `fn` change it in place, and saves it, all under the config lock.
+export function updateConfig<T>(fn: (cfg: AppConfig) => T | Promise<T>): Promise<T> {
+  return withConfigLock(async () => {
+    const cfg = await loadConfig();
+    const result = await fn(cfg);
+    await saveConfig(cfg);
+    return result;
+  });
 }
 
 export async function saveConfig(c: AppConfigInput): Promise<void> {
