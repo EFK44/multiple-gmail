@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { removeAccount } from '../core/accounts.js';
 import { loadConfig, validateAlias } from '../core/config.js';
-import { AuthFlowError, startLoopbackAuth } from '../core/googleAuth.js';
+import { AccountError, AuthFlowError, startLoopbackAuth } from '../core/googleAuth.js';
 import { loadClient } from '../core/secrets.js';
 import { openUrl } from '../core/openUrl.js';
 import { clearGmailCache } from '../gmail/client.js';
@@ -50,7 +50,6 @@ export function defaultIo(): CliIo {
       }
     },
     openUrl,
-    startLocal: (opts) => runLocalMode(opts),
   };
 }
 
@@ -99,9 +98,10 @@ async function connect(alias: string, email: string | undefined, reconnect: bool
     started = await startLoopbackAuth(alias, { reconnect, loginHint: email });
   } catch (e) {
     const msg = (e as Error).message;
-    if (/No OAuth client/i.test(msg)) {
+    const code = e instanceof AccountError ? e.code : undefined;
+    if (code === 'no_client') {
       io.error('No OAuth client is configured yet. Finish the setup in the multiple-gmail app (the wizard) first.');
-    } else if (/Alias already exists/i.test(msg)) {
+    } else if (code === 'alias_exists') {
       io.error(`Account "${alias}" already exists. Use: accounts reconnect ${alias}`);
     } else io.error(msg);
     return EXIT_USER_ERROR;
@@ -200,7 +200,7 @@ async function accounts(args: string[], io: CliIo): Promise<number> {
       return EXIT_OK;
     } catch (e) {
       const msg = (e as Error).message;
-      io.error(/No account named/.test(msg) ? `Unknown account "${alias}".` : msg);
+      io.error(e instanceof AccountError && e.code === 'unknown_alias' ? `Unknown account "${alias}".` : msg);
       return EXIT_USER_ERROR;
     }
   }
@@ -212,8 +212,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<n
   const [cmd, ...rest] = argv;
   try {
     if (cmd === undefined || cmd === '--minimized') {
-      const startLocal = io.startLocal ?? ((opts) => runLocalMode(opts));
-      return await startLocal({ openBrowser: cmd === undefined });
+      return await (io.startLocal ?? runLocalMode)({ openBrowser: cmd === undefined });
     }
     if (cmd === '--version' || cmd === '-v') {
       io.log(VERSION);

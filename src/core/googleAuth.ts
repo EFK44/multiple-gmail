@@ -3,11 +3,12 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import { gmail } from '@googleapis/gmail';
 import { CodeChallengeMethod, OAuth2Client } from 'google-auth-library';
-import { REVOKE_URL, type ConnectedAccount } from './accounts.js';
+import { AccountError, REVOKE_URL, type ConnectedAccount } from './accounts.js';
 import { loadConfig, saveConfig, validateAlias } from './config.js';
 import { loadClient, saveToken, type OAuthClient } from './secrets.js';
 
 export type { ConnectedAccount } from './accounts.js';
+export { AccountError } from './accounts.js';
 
 export const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.modify';
 
@@ -261,12 +262,12 @@ export async function startLoopbackAuth(
 
   const cfg = await loadConfig();
   const existing = cfg.accounts[a];
-  if (opts.reconnect && !existing) throw new Error(`No account named "${a}" to reconnect.`);
-  if (!opts.reconnect && existing) throw new Error(`Alias already exists, use Reconnect: "${a}".`);
+  if (opts.reconnect && !existing) throw new AccountError('unknown_alias', `No account named "${a}" to reconnect.`);
+  if (!opts.reconnect && existing) throw new AccountError('alias_exists', `Alias already exists, use Reconnect: "${a}".`);
   const lang = opts.lang ?? cfg.language;
 
   const client = await (deps.loadClient ?? loadClient)();
-  if (!client) throw new Error('No OAuth client has been uploaded yet. Upload the OAuth client JSON first.');
+  if (!client) throw new AccountError('no_client', 'No OAuth client has been uploaded yet. Upload the OAuth client JSON first.');
 
   const server = createServer();
   await new Promise<void>((resolve, reject) => {

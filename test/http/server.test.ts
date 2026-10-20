@@ -1,7 +1,10 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { saveConfig } from '../../src/core/config.js';
-import { AuthFlowError } from '../../src/core/googleAuth.js';
+import { AccountError, AuthFlowError } from '../../src/core/googleAuth.js';
+import { setAccountStatus } from '../../src/gmail/errors.js';
+import { clientProof, newNonce, serverProof } from '../../src/http/handshake.js';
+import { probeExistingInstance } from '../../src/http/singleInstance.js';
 import { getLocalApiKey, loadClient } from '../../src/core/secrets.js';
 import { startLocalServer, type LocalServer, type LocalServerDeps } from '../../src/modes/localHttp.js';
 import { raw, tempHome } from './helpers.js';
@@ -29,10 +32,9 @@ const origin = (s: LocalServer) => `http://127.0.0.1:${portOf(s)}`;
 async function session(s: LocalServer, launchUrl?: string): Promise<string> {
   let url = launchUrl;
   if (!url) {
-    const key = await getLocalApiKey();
-    const r = await raw(portOf(s), { method: 'POST', path: '/internal/launch', headers: { Authorization: `Bearer ${key}` } });
-    expect(r.status).toBe(200);
-    url = (JSON.parse(r.body) as { url: string }).url;
+    const probe = await probeExistingInstance(portOf(s), getLocalApiKey);
+    if (probe.kind !== 'launch') throw new Error('handshake failed');
+    url = probe.url;
   }
   const u = new URL(url);
   const r = await raw(portOf(s), { path: u.pathname + u.search });
@@ -339,7 +341,7 @@ describe('local http server', () => {
 
   it('maps a missing OAuth client to 409', async () => {
     const startAuth = vi.fn(async () => {
-      throw new Error('No OAuth client has been uploaded yet. Upload the OAuth client JSON first.');
+      throw new AccountError('no_client', 'No OAuth client has been uploaded yet. Upload the OAuth client JSON first.');
     });
     const s = await start({ startLoopbackAuth: startAuth });
     const cookie = await session(s);
@@ -356,23 +358,138 @@ describe('local http server', () => {
     expect(r.body).toContain('multiple-gmail');
   });
 
-  it('/internal/launch needs the bearer and refuses browser origins', async () => {
+  describe('second-instance handshake', () => {
+    const post = (s: LocalServer, path: string, body: unknown, headers: Record<string, string> = {}) =>
+      raw(portOf(s), {
+        method: 'POST',
+        path,
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(body),
+      });
+
+    it('real handshake works and the server proof verifies', async () => {
+      const s = await start();
+      const key = await getLocalApiKey();
+      const nonceC = newNonce();
+      const ch = await post(s, '/internal/launch/challenge', { nonceC });
+      expect(ch.status).toBe(200);
+      const { nonceS, proof } = JSON.parse(ch.body);
+      expect(proof).toBe(serverProof(key, nonceC, nonceS));
+      expect(ch.body).not.toContain(key);
+      const r = await post(s, '/internal/launch', { nonceS, proof: clientProof(key, nonceS, nonceC) });
+      expect(r.status).toBe(200);
+      expect(JSON.parse(r.body).url.startsWith(`http://127.0.0.1:${portOf(s)}/?t=`)).toBe(true);
+      expect((await probeExistingInstance(portOf(s), getLocalApiKey)).kind).toBe('launch');
+    });
+
+    it('a replayed nonceS is rejected', async () => {
+      const s = await start();
+      const key = await getLocalApiKey();
+      const nonceC = newNonce();
+      const { nonceS } = JSON.parse((await post(s, '/internal/launch/challenge', { nonceC })).body);
+      const body = { nonceS, proof: clientProof(key, nonceS, nonceC) };
+      expect((await post(s, '/internal/launch', body)).status).toBe(200);
+      expect((await post(s, '/internal/launch', body)).status).toBe(401);
+    });
+
+    it('a wrong client proof is rejected and burns the nonce', async () => {
+      const s = await start();
+      const key = await getLocalApiKey();
+      const nonceC = newNonce();
+      const { nonceS } = JSON.parse((await post(s, '/internal/launch/challenge', { nonceC })).body);
+      const wrong = await post(s, '/internal/launch', { nonceS, proof: clientProof('wrong-key', nonceS, nonceC) });
+      expect(wrong.status).toBe(401);
+      const right = await post(s, '/internal/launch', { nonceS, proof: clientProof(key, nonceS, nonceC) });
+      expect(right.status).toBe(401);
+    });
+
+    it('nonces expire after 30 s', async () => {
+      let now = 5_000_000;
+      const s = await start({ now: () => now });
+      const key = await getLocalApiKey();
+      const nonceC = newNonce();
+      const { nonceS } = JSON.parse((await post(s, '/internal/launch/challenge', { nonceC })).body);
+      now += 30_001;
+      const r = await post(s, '/internal/launch', { nonceS, proof: clientProof(key, nonceS, nonceC) });
+      expect(r.status).toBe(401);
+    });
+
+    it('the bearer key is not accepted; browsers and foreign hosts are refused', async () => {
+      const s = await start();
+      const key = await getLocalApiKey();
+      const bearer = await raw(portOf(s), {
+        method: 'POST',
+        path: '/internal/launch',
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      expect(bearer.status).not.toBe(200);
+      for (const path of ['/internal/launch/challenge', '/internal/launch']) {
+        expect((await post(s, path, { nonceC: newNonce() }, { Origin: 'http://evil.com' })).status).toBe(403);
+        expect((await post(s, path, { nonceC: newNonce() }, { Host: 'evil.com' })).status).toBe(403);
+      }
+    });
+  });
+
+  it('HEAD does not consume a launch token', async () => {
     const s = await start();
-    const none = await raw(portOf(s), { method: 'POST', path: '/internal/launch' });
-    expect(none.status).toBe(401);
-    const key = await getLocalApiKey();
-    const browser = await raw(portOf(s), {
-      method: 'POST',
-      path: '/internal/launch',
-      headers: { Authorization: `Bearer ${key}`, Origin: 'http://evil.com' },
+    const u = new URL(s.url);
+    const head = await raw(portOf(s), { method: 'HEAD', path: u.pathname + u.search });
+    expect(head.status).not.toBe(302);
+    const get = await raw(portOf(s), { path: u.pathname + u.search });
+    expect(get.status).toBe(302);
+  });
+
+  it('concurrent connects for one alias share one pending flow', async () => {
+    const startAuth = vi.fn(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+      return { url: 'https://accounts.example.com/one', done: new Promise<never>(() => {}) };
     });
-    expect(browser.status).toBe(403);
-    const evilHost = await raw(portOf(s), {
-      method: 'POST',
-      path: '/internal/launch',
-      headers: { Authorization: `Bearer ${key}`, Host: 'evil.com' },
+    const s = await start({ startLoopbackAuth: startAuth });
+    const cookie = await session(s);
+    const [a, b] = await Promise.all([
+      api(s, cookie, 'POST', '/api/accounts', { alias: 'alpha' }),
+      api(s, cookie, 'POST', '/api/accounts', { alias: 'alpha' }),
+    ]);
+    const c = await api(s, cookie, 'POST', '/api/accounts', { alias: 'alpha' });
+    for (const r of [a, b, c]) {
+      expect(r.status).toBe(200);
+      expect(JSON.parse(r.body)).toEqual({ authUrl: 'https://accounts.example.com/one' });
+    }
+    expect(startAuth).toHaveBeenCalledTimes(1);
+  });
+
+  it('status of a configured account reflects the live Gmail status', async () => {
+    const s = await start();
+    await saveConfig({
+      port: 47110,
+      language: 'en',
+      defaultAccount: 'alpha',
+      accounts: { alpha: { email: 'you@example.com', addedAt: '2026-10-01T00:00:00.000Z' } },
     });
-    expect(evilHost.status).toBe(403);
+    const cookie = await session(s);
+    const status = async () => JSON.parse((await api(s, cookie, 'GET', '/api/accounts/alpha/status')).body).status;
+    expect(await status()).toBe('connected');
+    setAccountStatus('alpha', 'needs_reauth');
+    expect(await status()).toBe('needs_reauth');
+    setAccountStatus('alpha', 'error');
+    expect(await status()).toBe('error');
+    setAccountStatus('alpha', 'ok');
+  });
+
+  it('a failed flow with a non-AuthFlowError shows a generic message', async () => {
+    let rejectDone!: (e: Error) => void;
+    const startAuth = vi.fn(async () => ({
+      url: 'https://accounts.example.com/x',
+      done: new Promise<never>((_r, rej) => (rejectDone = rej)),
+    }));
+    const s = await start({ startLoopbackAuth: startAuth });
+    const cookie = await session(s);
+    await api(s, cookie, 'POST', '/api/accounts', { alias: 'alpha' });
+    rejectDone(new Error('internal detail with a secret path'));
+    await new Promise((r) => setTimeout(r, 10));
+    const st = JSON.parse((await api(s, cookie, 'GET', '/api/accounts/alpha/status')).body);
+    expect(st).toMatchObject({ status: 'failed', reason: 'unknown' });
+    expect(st.message).not.toContain('secret');
   });
 
   it('opens the browser only when asked', async () => {

@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { localhostHostValidation, localhostOriginValidation } from '@modelcontextprotocol/node';
 import { VERSION } from '../version.js';
 import type { ApiHandler } from './api.js';
+import { isNonce, type HandshakeStore } from './handshake.js';
 import { constantTimeEqual, type SessionStore } from './session.js';
 import { readStatic } from './static.js';
 
@@ -10,11 +11,13 @@ export const CSP = "default-src 'self'; frame-ancestors 'none'";
 export const MAX_JSON_BODY = 1024 * 1024;
 // Past this much discarded overflow the connection is dropped instead of drained.
 const MAX_DRAIN = 8 * 1024 * 1024;
+const MAX_INTERNAL_BODY = 4 * 1024;
 
 export type RouterContext = {
   // The bound port (known only after listen, so a getter).
   port: () => number;
   sessions: SessionStore;
+  handshake: HandshakeStore;
   api: ApiHandler;
   mcp: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
   getApiKey: () => Promise<string>;
@@ -53,25 +56,56 @@ function unauthorized(res: ServerResponse): void {
 
 type Body = { kind: 'ok'; text: string } | { kind: 'too_large' };
 
-function readBody(req: IncomingMessage, limit: number): Promise<Body> {
+// Settles exactly once: on end, or as too_large when the body overflows and the stream is destroyed, closed, or
+// aborted before ending (otherwise the request would hang forever).
+export function readBody(req: IncomingMessage, limit: number, maxDrain = MAX_DRAIN): Promise<Body> {
   return new Promise((resolve, reject) => {
     const declared = Number(req.headers['content-length']);
     const chunks: Buffer[] = [];
     let size = 0;
     let over = Number.isFinite(declared) && declared > limit;
+    let settled = false;
+    const settle = (b: Body) => {
+      if (settled) return;
+      settled = true;
+      resolve(b);
+    };
     req.on('data', (c: Buffer) => {
       size += c.length;
       if (size > limit) over = true;
       if (over) {
         chunks.length = 0;
-        if (size > MAX_DRAIN) req.destroy();
+        if (size > maxDrain) {
+          settle({ kind: 'too_large' });
+          req.destroy();
+        }
         return;
       }
       chunks.push(c);
     });
-    req.on('end', () => resolve(over ? { kind: 'too_large' } : { kind: 'ok', text: Buffer.concat(chunks).toString('utf8') }));
-    req.on('error', reject);
+    req.on('end', () => settle(over ? { kind: 'too_large' } : { kind: 'ok', text: Buffer.concat(chunks).toString('utf8') }));
+    req.on('aborted', () => settle({ kind: 'too_large' }));
+    req.on('close', () => settle({ kind: 'too_large' }));
+    req.on('error', (e) => {
+      if (over) settle({ kind: 'too_large' });
+      else if (!settled) {
+        settled = true;
+        reject(e);
+      }
+    });
   });
+}
+
+async function readJsonObject(req: IncomingMessage, limit: number): Promise<Record<string, unknown> | null> {
+  if (!isJsonType(req.headers['content-type'])) return null;
+  const body = await readBody(req, limit);
+  if (body.kind !== 'ok') return null;
+  try {
+    const v: unknown = JSON.parse(body.text);
+    return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
 
 const isJsonType = (v: string | undefined) => !!v && /^application\/json\s*(;|$)/i.test(v);
@@ -101,11 +135,20 @@ export function createRouter(ctx: RouterContext): (req: IncomingMessage, res: Se
       return sendJson(res, 200, { app: APP_NAME, version: VERSION });
     }
 
-    if (path === '/internal/launch') {
+    if (path === '/internal/launch/challenge' || path === '/internal/launch') {
       if (method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed.' });
-      // Only the second exe instance calls this; a browser always sends Origin on POST.
+      // Only the second exe instance calls these; a browser always sends Origin on POST.
       if (req.headers.origin !== undefined) return sendJson(res, 403, { error: 'Forbidden.' });
-      if (!(await bearerOk(req, ctx.getApiKey))) return unauthorized(res);
+      const body = await readJsonObject(req, MAX_INTERNAL_BODY);
+      if (!body) return sendJson(res, 400, { error: 'Bad request.' });
+      const key = await ctx.getApiKey();
+      if (path === '/internal/launch/challenge') {
+        if (!isNonce(body.nonceC)) return sendJson(res, 400, { error: 'Bad request.' });
+        return sendJson(res, 200, ctx.handshake.challenge(key, body.nonceC));
+      }
+      if (!isNonce(body.nonceS) || !ctx.handshake.verify(key, body.nonceS, body.proof)) {
+        return sendJson(res, 401, { error: 'Unauthorized.' });
+      }
       return sendJson(res, 200, { url: ctx.launchUrl() });
     }
 
@@ -132,7 +175,8 @@ export function createRouter(ctx: RouterContext): (req: IncomingMessage, res: Se
 
     if (method !== 'GET' && method !== 'HEAD') return sendText(res, 405, 'Method not allowed');
 
-    if (path === '/' && url.searchParams.has('t')) {
+    // Only GET consumes a launch token: HEAD (link previews, prefetchers) must not burn it.
+    if (path === '/' && method === 'GET' && url.searchParams.has('t')) {
       if (!ctx.sessions.consumeLaunchToken(url.searchParams.get('t') ?? '')) {
         return sendText(
           res,

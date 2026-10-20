@@ -1,6 +1,7 @@
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
+import { clientProof, serverProof } from '../../src/http/handshake.js';
 import { probeExistingInstance } from '../../src/http/singleInstance.js';
 
 let srv: Server | undefined;
@@ -9,42 +10,80 @@ afterEach(async () => {
   srv = undefined;
 });
 
-function listen(handler: Parameters<typeof createServer>[1]): Promise<number> {
-  srv = createServer(handler);
-  return new Promise((resolve) => srv!.listen(0, '127.0.0.1', () => resolve((srv!.address() as AddressInfo).port)));
+type Seen = { method?: string; path?: string; auth?: string; body: string };
+
+function listen(handler: (req: IncomingMessage, body: string, port: number) => { status?: number; json: unknown }) {
+  const seen: Seen[] = [];
+  srv = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
+    req.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8');
+      seen.push({ method: req.method, path: req.url, auth: req.headers.authorization, body });
+      const out = handler(req, body, (srv!.address() as AddressInfo).port);
+      res.writeHead(out.status ?? 200, { 'Content-Type': 'application/json' });
+      res.end(typeof out.json === 'string' ? out.json : JSON.stringify(out.json));
+    });
+  });
+  return new Promise<{ port: number; seen: Seen[] }>((resolve) =>
+    srv!.listen(0, '127.0.0.1', () => resolve({ port: (srv!.address() as AddressInfo).port, seen })),
+  );
 }
 
+const KEY = 'the-local-key';
+const health = { app: 'multiple-gmail', version: '0.1.0' };
+
 describe('probeExistingInstance', () => {
-  it('returns a launch URL when /health answers as multiple-gmail', async () => {
-    const seen: { auth?: string; path?: string }[] = [];
-    const port = await listen((req, res) => {
-      seen.push({ auth: req.headers.authorization, path: req.url });
-      res.setHeader('Content-Type', 'application/json');
-      if (req.url === '/health') return res.end(JSON.stringify({ app: 'multiple-gmail', version: '0.1.0' }));
-      if (req.url === '/internal/launch' && req.method === 'POST') {
-        return res.end(JSON.stringify({ url: `http://127.0.0.1:${port}/?t=abc` }));
+  it('completes the mutual handshake with a genuine instance and never sends the key', async () => {
+    const nonceS = 'S'.repeat(43);
+    let nonceC = '';
+    const { port, seen } = await listen((req, body, p) => {
+      if (req.url === '/health') return { json: health };
+      if (req.url === '/internal/launch/challenge') {
+        nonceC = JSON.parse(body).nonceC;
+        return { json: { nonceS, proof: serverProof(KEY, nonceC, nonceS) } };
       }
-      res.statusCode = 404;
-      res.end('{}');
+      const b = JSON.parse(body);
+      if (b.nonceS === nonceS && b.proof === clientProof(KEY, nonceS, nonceC)) {
+        return { json: { url: `http://127.0.0.1:${p}/?t=abc` } };
+      }
+      return { status: 401, json: {} };
     });
-    const r = await probeExistingInstance(port, async () => 'the-key');
+    const r = await probeExistingInstance(port, async () => KEY);
     expect(r).toEqual({ kind: 'launch', url: `http://127.0.0.1:${port}/?t=abc` });
-    expect(seen.find((s) => s.path === '/internal/launch')?.auth).toBe('Bearer the-key');
+    for (const s of seen) {
+      expect(s.auth).toBeUndefined();
+      expect(s.body).not.toContain(KEY);
+    }
+  });
+
+  it('an impostor that cannot produce the server proof never receives a client proof', async () => {
+    const { port, seen } = await listen((req) => {
+      if (req.url === '/health') return { json: health };
+      return { json: { nonceS: 'S'.repeat(43), proof: 'forged' } };
+    });
+    expect(await probeExistingInstance(port, async () => KEY)).toEqual({ kind: 'foreign' });
+    expect(seen.map((s) => s.path)).toEqual(['/health', '/internal/launch/challenge']);
+    for (const s of seen) {
+      expect(s.auth).toBeUndefined();
+      expect(s.body).not.toContain(KEY);
+    }
   });
 
   it('reports a foreign program on the port', async () => {
-    const port = await listen((_req, res) => {
-      res.setHeader('Content-Type', 'text/html');
-      res.end('<html>other</html>');
-    });
-    expect(await probeExistingInstance(port, async () => 'k')).toEqual({ kind: 'foreign' });
+    const { port } = await listen(() => ({ json: '<html>other</html>' }));
+    expect(await probeExistingInstance(port, async () => KEY)).toEqual({ kind: 'foreign' });
   });
 
   it('rejects a launch URL that does not point at the probed port', async () => {
-    const port = await listen((req, res) => {
-      if (req.url === '/health') return res.end(JSON.stringify({ app: 'multiple-gmail', version: '0.1.0' }));
-      res.end(JSON.stringify({ url: 'https://evil.example.com/' }));
+    const nonceS = 'S'.repeat(43);
+    const { port } = await listen((req, body) => {
+      if (req.url === '/health') return { json: health };
+      if (req.url === '/internal/launch/challenge') {
+        return { json: { nonceS, proof: serverProof(KEY, JSON.parse(body).nonceC, nonceS) } };
+      }
+      return { json: { url: 'https://evil.example.com/' } };
     });
-    expect(await probeExistingInstance(port, async () => 'k')).toEqual({ kind: 'foreign' });
+    expect(await probeExistingInstance(port, async () => KEY)).toEqual({ kind: 'foreign' });
   });
 });

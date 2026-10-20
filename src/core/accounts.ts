@@ -3,6 +3,17 @@ import { deleteToken, loadToken, type StoredToken } from './secrets.js';
 
 export type ConnectedAccount = { alias: string; email: string };
 
+// Typed setup errors so callers branch on code, not on message text.
+export type AccountErrorCode = 'no_client' | 'alias_exists' | 'unknown_alias';
+export class AccountError extends Error {
+  readonly code: AccountErrorCode;
+  constructor(code: AccountErrorCode, message: string) {
+    super(message);
+    this.name = 'AccountError';
+    this.code = code;
+  }
+}
+
 export type AccountStatus = 'ok' | 'needs_reauth' | 'error';
 
 export const REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
@@ -23,7 +34,7 @@ export async function removeAccount(alias: string, deps: RemoveDeps = {}): Promi
     tokenUnreadable = true;
   }
   if (!cfg.accounts[a] && !token && !tokenUnreadable) {
-    throw new Error(`No account named "${a}".`);
+    throw new AccountError('unknown_alias', `No account named "${a}".`);
   }
 
   let revoked = false;

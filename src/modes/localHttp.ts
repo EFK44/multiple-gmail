@@ -8,6 +8,7 @@ import { configPath } from '../core/paths.js';
 import { getLocalApiKey } from '../core/secrets.js';
 import { createApi, type ApiDeps } from '../http/api.js';
 import { createRouter } from '../http/router.js';
+import { HandshakeStore } from '../http/handshake.js';
 import { SessionStore } from '../http/session.js';
 import { probeExistingInstance } from '../http/singleInstance.js';
 import { buildMcpServer } from '../mcp/buildServer.js';
@@ -50,6 +51,7 @@ export async function startLocalServer(
     createRouter({
       port: () => port,
       sessions,
+      handshake: new HandshakeStore(deps.now),
       api: createApi(deps),
       mcp: (req, res) => mcpNode(req, res),
       getApiKey: getLocalApiKey,
