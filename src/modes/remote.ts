@@ -48,6 +48,9 @@ export type RemoteConfig = {
 
 type Env = Record<string, string | undefined>;
 
+// Unauthenticated GET /authorize and GET /admin/login per IP per 15 minutes.
+export const PAGE_LIMIT = 60;
+
 export function parseRemoteEnv(env: Env): RemoteConfig {
   const allowInsecure = env.MULTIPLE_GMAIL_ALLOW_INSECURE === '1';
   const rawUrl = env.PUBLIC_URL?.trim();
@@ -141,6 +144,8 @@ export async function createRemoteServer(opts: { env: Env; deps?: RemoteServerDe
 
   const store = await RemoteStore.open(now);
   const loginLimiter = new RateLimiter(MAX_FAILURES, FAILURE_WINDOW_MS, now);
+  // Unauthenticated page loads that create server-side entries (consent transactions, login CSRF tokens).
+  const pageLimiter = new RateLimiter(PAGE_LIMIT, FAILURE_WINDOW_MS, now);
   // Shared by both password forms (OAuth consent and admin login).
   const verifySlots = new Semaphore(4);
   const oauth = createOAuthServer({
@@ -151,6 +156,7 @@ export async function createRemoteServer(opts: { env: Env; deps?: RemoteServerDe
     loginLimiter,
     registerLimiter: new RateLimiter(20, 60 * 60 * 1000, now),
     verifySlots,
+    pageLimiter,
     trustProxy: cfg.trustProxy,
     allowInsecure: cfg.allowInsecure,
     now,
@@ -170,6 +176,7 @@ export async function createRemoteServer(opts: { env: Env; deps?: RemoteServerDe
 
   const validateHost = hostHeaderValidation([new URL(cfg.publicUrl).hostname]);
   const https = cfg.publicUrl.startsWith('https:');
+  let warnedProxy = false;
 
   function baseHeaders(res: ServerResponse): void {
     if (https) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
@@ -200,6 +207,13 @@ export async function createRemoteServer(opts: { env: Env; deps?: RemoteServerDe
         res.writeHead(302, { Location: '/', 'Cache-Control': 'no-store' });
         return void res.end();
       }
+      const ip = clientIp(req, cfg.trustProxy);
+      if (pageLimiter.blocked(ip)) {
+        return sendHtml(res, 429, 'Too many requests', '<h1>Too many requests</h1><p>Try again later.</p>', {
+          headers: { 'Retry-After': String(pageLimiter.retryAfter(ip)) },
+        });
+      }
+      pageLimiter.record(ip);
       return loginPage(res, 200);
     }
     if (method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed.' });
@@ -246,6 +260,10 @@ export async function createRemoteServer(opts: { env: Env; deps?: RemoteServerDe
     // Container health checks call this by IP, so it skips the Host check; it reveals nothing but the version.
     if (path === '/health' && method === 'GET') return sendJson(res, 200, { app: 'multiple-gmail', version: VERSION });
     if (!validateHost(req, res)) return;
+    if (!cfg.trustProxy && !warnedProxy && req.headers['x-forwarded-for'] !== undefined) {
+      warnedProxy = true;
+      log('Requests carry X-Forwarded-For but TRUST_PROXY is off: rate limits see the proxy address for every client. Set TRUST_PROXY=1 if this server is reachable only through your reverse proxy.');
+    }
     baseHeaders(res);
 
     if (path === '/mcp') return serveMcp(req, res);

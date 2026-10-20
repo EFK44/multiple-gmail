@@ -10,7 +10,9 @@ import { readSealed, writeSealed } from '../core/secrets.js';
 export const MAX_CLIENTS = 50;
 export const ACCESS_TTL_MS = 60 * 60 * 1000;
 export const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const MAX_TOKENS = 1000;
+// A rotated refresh token is kept this long so a replay is still recognized (and revokes its family).
+export const USED_REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const MAX_TOKENS = 1000;
 const FILE = 'remote-tokens.enc';
 
 export type ClientRecord = {
@@ -21,7 +23,7 @@ export type ClientRecord = {
 };
 
 type AccessRecord = { hash: string; clientId: string; family: string; exp: number; resource: string; scope: string };
-type RefreshRecord = AccessRecord & { used: boolean };
+type RefreshRecord = AccessRecord & { used: boolean; usedAt?: number };
 
 type FileShape = { v: 1; clients: ClientRecord[]; access: AccessRecord[]; refresh: RefreshRecord[] };
 
@@ -43,10 +45,14 @@ export class RemoteStore {
   private refresh = new Map<string, RefreshRecord>();
   private saving: Promise<void> = Promise.resolve();
 
-  private constructor(private readonly now: () => number) {}
+  private constructor(
+    private readonly now: () => number,
+    private readonly maxTokens: number,
+  ) {}
 
-  static async open(now: () => number = Date.now): Promise<RemoteStore> {
-    const store = new RemoteStore(now);
+  // maxTokens is a test hook; production uses MAX_TOKENS.
+  static async open(now: () => number = Date.now, opts: { maxTokens?: number } = {}): Promise<RemoteStore> {
+    const store = new RemoteStore(now, opts.maxTokens ?? MAX_TOKENS);
     const buf = await readSealed(join(dataDir(), FILE));
     if (buf) {
       const data = JSON.parse(buf.toString('utf8')) as Partial<FileShape>;
@@ -61,10 +67,18 @@ export class RemoteStore {
   private prune(): void {
     const t = this.now();
     for (const [k, a] of this.access) if (a.exp <= t) this.access.delete(k);
-    for (const [k, r] of this.refresh) if (r.exp <= t) this.refresh.delete(k);
-    // Oldest first (insertion order) when over the cap.
+    for (const [k, r] of this.refresh) {
+      if (r.exp <= t || (r.used && (r.usedAt ?? 0) + USED_REFRESH_TTL_MS <= t)) this.refresh.delete(k);
+    }
+    // Over the cap: rotated refresh tokens go first (oldest first), live ones only after them.
+    if (this.refresh.size > this.maxTokens) {
+      for (const [k, r] of this.refresh) {
+        if (this.refresh.size <= this.maxTokens) break;
+        if (r.used) this.refresh.delete(k);
+      }
+    }
     for (const map of [this.access, this.refresh] as Map<string, AccessRecord>[]) {
-      while (map.size > MAX_TOKENS) {
+      while (map.size > this.maxTokens) {
         const oldest = map.keys().next().value;
         if (oldest === undefined) break;
         map.delete(oldest);
@@ -148,6 +162,7 @@ export class RemoteStore {
   }
 
   async rotateRefresh(token: string, clientId: string): Promise<RotateResult> {
+    this.prune();
     const rec = this.refresh.get(digestHex(token));
     if (!rec || rec.exp <= this.now() || !this.clients.has(rec.clientId)) return { kind: 'invalid' };
     if (rec.used) {
@@ -155,8 +170,11 @@ export class RemoteStore {
       return { kind: 'reused' };
     }
     if (rec.clientId !== clientId) return { kind: 'invalid' };
-    // Kept (marked used) until it expires so a replay is recognized and revokes the family.
+    // Kept (marked used) for USED_REFRESH_TTL_MS so a replay is recognized and revokes the family.
     rec.used = true;
+    rec.usedAt = this.now();
+    // The access tokens issued before this rotation are superseded.
+    for (const [k, a] of this.access) if (a.family === rec.family) this.access.delete(k);
     const tokens = this.mint(rec.clientId, rec.resource, rec.scope, rec.family);
     await this.persist();
     return { kind: 'ok', tokens };

@@ -20,7 +20,7 @@ import { digestHex, type RemoteStore } from './store.js';
 export const SCOPE = 'mcp';
 const CODE_TTL_MS = 60 * 1000;
 const TXN_TTL_MS = 10 * 60 * 1000;
-const MAX_TXNS = 100;
+const MAX_TXNS = 500;
 const MAX_CODES = 100;
 const MAX_FORM = 8 * 1024;
 const MAX_REGISTER = 16 * 1024;
@@ -38,6 +38,8 @@ export type OAuthServerOptions = {
   password: PasswordHash;
   loginLimiter: RateLimiter;
   registerLimiter: RateLimiter;
+  // Unauthenticated page loads (GET /authorize) per IP, so a flood cannot evict the owner's pending request.
+  pageLimiter: RateLimiter;
   verifySlots: Semaphore;
   trustProxy: boolean;
   allowInsecure: boolean;
@@ -515,7 +517,17 @@ export function createOAuthServer(o: OAuthServerOptions) {
       return true;
     }
     if (path === '/authorize') {
-      if (method === 'GET') await authorizeGet(res, url.searchParams);
+      if (method === 'GET') {
+        const ip = clientIp(req, o.trustProxy);
+        if (o.pageLimiter.blocked(ip)) {
+          sendHtml(res, 429, 'Too many requests', '<h1>Too many requests</h1><p>Try again later.</p>', {
+            headers: { 'Retry-After': String(o.pageLimiter.retryAfter(ip)) },
+          });
+          return true;
+        }
+        o.pageLimiter.record(ip);
+        await authorizeGet(res, url.searchParams);
+      }
       else if (method === 'POST') await authorizePost(req, res);
       else sendJson(res, 405, { error: 'invalid_request' }, { Allow: 'GET, POST' });
       return true;

@@ -80,19 +80,23 @@ export function readSecretFromStdin(prompt: string): Promise<string> {
       stdin.setRawMode(false);
       stdin.pause();
       stdin.off('data', onData);
+      stdin.off('end', onEnd);
       process.stderr.write('\n');
       if (err) reject(err);
       else resolve(value);
     };
     const onData = (chunk: string) => {
       for (const ch of chunk) {
-        if (ch === '\r' || ch === '\n') return done();
+        // Enter, or Ctrl+D (end of input).
+        if (ch === '\r' || ch === '\n' || ch === '\u0004') return done();
         if (ch === '\u0003') return done(new Error('Cancelled.'));
         if (ch === '\u007f' || ch === '\b') value = value.slice(0, -1);
         else if (ch >= ' ') value += ch;
       }
     };
+    const onEnd = () => done();
     stdin.on('data', onData);
+    stdin.on('end', onEnd);
   });
 }
 

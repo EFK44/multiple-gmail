@@ -135,7 +135,7 @@ export class AdminSessions {
   constructor(now: () => number = Date.now) {
     this.sessions = new ExpiringDigests(now, 16);
     this.callbacks = new ExpiringDigests(now, 16);
-    this.csrf = new ExpiringDigests(now, 64);
+    this.csrf = new ExpiringDigests(now, 500);
   }
 
   create(): { cookies: string[] } {
@@ -143,11 +143,11 @@ export class AdminSessions {
     const cb = secret();
     this.sessions.add(id, ADMIN_SESSION_TTL_MS);
     this.callbacks.add(cb, ADMIN_SESSION_TTL_MS);
-    const max = Math.floor(ADMIN_SESSION_TTL_MS / 1000);
+    // Session cookies (no Max-Age): the browser drops them on close, the server expires them after 12 h idle.
     return {
       cookies: [
-        `${ADMIN_COOKIE}=${id}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${max}`,
-        `${ADMIN_CB_COOKIE}=${cb}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${max}`,
+        `${ADMIN_COOKIE}=${id}; Path=/; Secure; HttpOnly; SameSite=Strict`,
+        `${ADMIN_CB_COOKIE}=${cb}; Path=/; Secure; HttpOnly; SameSite=Lax`,
       ],
     };
   }
@@ -158,6 +158,10 @@ export class AdminSessions {
     const hit = this.sessions.find(id);
     if (!hit) return false;
     this.sessions.touch(hit, ADMIN_SESSION_TTL_MS);
+    // The callback cookie slides with the session it was issued with.
+    const cb = readCookie(cookieHeader, ADMIN_CB_COOKIE);
+    const cbHit = cb ? this.callbacks.find(cb) : undefined;
+    if (cbHit) this.callbacks.touch(cbHit, ADMIN_SESSION_TTL_MS);
     return true;
   }
 

@@ -148,10 +148,12 @@ Node.js 24 is required. In the repository:
 npm ci
 node scripts/build-exe.mjs --bundle-only
 PUBLIC_URL=https://mail.example.com MULTIPLE_GMAIL_MASTER_KEY='...' ADMIN_PASSWORD_HASH='scrypt$...' \
+  HOST=127.0.0.1 TRUST_PROXY=1 \
   MULTIPLE_GMAIL_HOME=/var/lib/multiple-gmail node build/main.cjs serve --remote
 ```
 
-Keep `build/main.cjs` and `src/web` together; the setup pages are read from `src/web`.
+`HOST=127.0.0.1` keeps the port reachable only from the same machine, where your reverse proxy runs. Keep
+`build/main.cjs` and `src/web` together; the setup pages are read from `src/web`.
 
 ## Environment variables
 
@@ -251,8 +253,13 @@ To restore, stop the container, extract the archive into an empty volume, and st
   access at any time at `https://myaccount.google.com/permissions`.
 - Tokens issued to AI apps are random values; the server stores only their SHA-256 digests, encrypted. Access tokens
   last one hour; refresh tokens last 30 days and are replaced on every use. If an old refresh token is ever presented
-  again, the server revokes that whole session.
-- Keep port 8080 private and the server updated. Rebuild the image from time to time to pick up Node.js security fixes:
+  again within 7 days of its replacement, the server revokes that whole session.
+- Only the reverse proxy may reach port 8080. With `TRUST_PROXY=1` the server believes the last `X-Forwarded-For`
+  entry, so anyone who could reach the port directly could send a forged header and dodge the rate limits. If requests
+  carry `X-Forwarded-For` while `TRUST_PROXY` is off, the server logs a one-time hint.
+- Opening the sign-in pages without a password is also limited (60 page loads per 15 minutes per address), so a flood
+  cannot push out a sign-in you have open.
+- Keep the server updated. Rebuild the image from time to time to pick up Node.js security fixes:
   `docker build --pull -t multiple-gmail . && docker compose up -d`.
 - The AI app can read, label and draft mail in all connected accounts. Sending requires the model to ask for your
   approval in the chat first; read what it wants to send before you agree.

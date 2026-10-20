@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { resetMasterKeyCacheForTests, useMasterKey } from '../../src/core/masterKey.js';
+import { RemoteStore } from '../../src/remote/store.js';
 import {
   FORM,
   JSON_TYPE,
@@ -333,5 +335,30 @@ describe('remote oauth: dynamic client registration', () => {
     }
     expect(statuses.slice(0, 20).every((s) => s === 201)).toBe(true);
     expect(statuses[20]).toBe(429);
+  });
+});
+
+describe('remote oauth: flood limits and resource binding', () => {
+  it('unauthenticated GET /authorize is limited per IP', async () => {
+    const clientId = await register(h);
+    const q = authorizeQuery(clientId, pkce().challenge);
+    const statuses: number[] = [];
+    for (let i = 0; i < 61; i++) statuses.push((await h.req({ path: `/authorize?${q}` })).status);
+    expect(statuses.slice(0, 60).every((s) => s === 200)).toBe(true);
+    expect(statuses[60]).toBe(429);
+  }, 30_000);
+
+  it('a token whose stored resource is not the MCP URL gets 401', async () => {
+    const clientId = await register(h);
+    await h.server.close();
+    resetMasterKeyCacheForTests();
+    useMasterKey(Buffer.from(h.env.MULTIPLE_GMAIL_MASTER_KEY, 'base64'));
+    const store = await RemoteStore.open();
+    const t = await store.issueTokens({ clientId, resource: 'https://other.example/mcp', scope: 'mcp' });
+    await store.flush();
+    await h.restart();
+    const r = await h.req({ method: 'POST', path: '/mcp', headers: { ...JSON_TYPE, Authorization: `Bearer ${t.accessToken}` }, body: '{}' });
+    expect(r.status).toBe(401);
+    expect(String(r.headers['www-authenticate'])).toContain('invalid_token');
   });
 });

@@ -63,6 +63,46 @@ describe('remote store', () => {
     expect((await store.rotateRefresh(t.refreshToken, c!.clientId)).kind).toBe('invalid');
   });
 
+  it('over the token cap, rotated refresh tokens are evicted before live ones', async () => {
+    const store = await RemoteStore.open(Date.now, { maxTokens: 6 });
+    const idle = await store.registerClient({ redirectUris: ['https://c.example/cb'] });
+    const busy = await store.registerClient({ redirectUris: ['https://c.example/cb'] });
+    // The idle client's refresh token is the oldest record of all.
+    const idleTokens = await store.issueTokens({ clientId: idle!.clientId, resource: RES, scope: 'mcp' });
+    let current = (await store.issueTokens({ clientId: busy!.clientId, resource: RES, scope: 'mcp' })).refreshToken;
+    const rotated: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      const r = await store.rotateRefresh(current, busy!.clientId);
+      if (r.kind !== 'ok') throw new Error('rotation failed');
+      rotated.push(current);
+      current = r.tokens.refreshToken;
+    }
+    // 1 idle + 1 live + 8 used > 6: only used records were dropped.
+    expect(store.verifyAccess(idleTokens.accessToken)).not.toBeNull();
+    // A recent used record is still recognized as a replay, which revokes the busy family.
+    expect((await store.rotateRefresh(rotated[rotated.length - 1], busy!.clientId)).kind).toBe('reused');
+    expect((await store.rotateRefresh(current, busy!.clientId)).kind).toBe('invalid');
+    // The idle client's live refresh token survived the evictions.
+    expect((await store.rotateRefresh(idleTokens.refreshToken, idle!.clientId)).kind).toBe('ok');
+  });
+
+  it('rotated refresh tokens are kept for 7 days for replay detection', async () => {
+    let now = 1_000_000;
+    const store = await RemoteStore.open(() => now);
+    const c = await store.registerClient({ redirectUris: ['https://c.example/cb'] });
+    const t = await store.issueTokens({ clientId: c!.clientId, resource: RES, scope: 'mcp' });
+    const r = await store.rotateRefresh(t.refreshToken, c!.clientId);
+    expect(r.kind).toBe('ok');
+    now += 6 * 24 * 3600 * 1000;
+    expect((await store.rotateRefresh(t.refreshToken, c!.clientId)).kind).toBe('reused');
+
+    const t2 = await store.issueTokens({ clientId: c!.clientId, resource: RES, scope: 'mcp' });
+    expect((await store.rotateRefresh(t2.refreshToken, c!.clientId)).kind).toBe('ok');
+    now += 7 * 24 * 3600 * 1000 + 1;
+    // Forgotten after 7 days: just invalid now.
+    expect((await store.rotateRefresh(t2.refreshToken, c!.clientId)).kind).toBe('invalid');
+  });
+
   it('a refresh token presented by another client is refused', async () => {
     const store = await RemoteStore.open();
     const a = await store.registerClient({ redirectUris: ['https://c.example/cb'] });

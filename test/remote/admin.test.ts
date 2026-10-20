@@ -1,10 +1,11 @@
 import { mkdtemp, rm } from 'node:fs/promises';
+import type { IncomingMessage } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runCli, type CliIo } from '../../src/modes/cli.js';
 import { RemoteConfigError, createRemoteServer, parseRemoteEnv } from '../../src/modes/remote.js';
-import { hashPassword, parsePasswordHash, verifyPassword } from '../../src/remote/adminAuth.js';
+import { clientIp, hashPassword, parsePasswordHash, verifyPassword } from '../../src/remote/adminAuth.js';
 import { FORM, JSON_TYPE, PASSWORD, baseEnv, form, startHarness, type Harness } from './helpers.js';
 
 let h: Harness | undefined;
@@ -242,5 +243,46 @@ describe('remote admin', () => {
     h = await startHarness();
     const r = await h.req({ path: '/oauth/google/callback?state=abc&code=def' });
     expect(r.status).toBe(401);
+  });
+});
+
+describe('remote proxy handling and admin page limits', () => {
+  const fakeReq = (xff: string | undefined, remote = '10.0.0.5') =>
+    ({ headers: xff === undefined ? {} : { 'x-forwarded-for': xff }, socket: { remoteAddress: remote } }) as unknown as IncomingMessage;
+
+  it('clientIp uses the socket address unless TRUST_PROXY is on', () => {
+    expect(clientIp(fakeReq('203.0.113.9'), false)).toBe('10.0.0.5');
+    expect(clientIp(fakeReq('203.0.113.9'), true)).toBe('203.0.113.9');
+    expect(clientIp(fakeReq(undefined), true)).toBe('10.0.0.5');
+  });
+
+  it('a spoofed leftmost X-Forwarded-For entry is ignored: the rightmost (added by the proxy) wins', () => {
+    expect(clientIp(fakeReq('1.2.3.4, 198.51.100.7'), true)).toBe('198.51.100.7');
+    expect(clientIp(fakeReq('1.2.3.4,   198.51.100.7  '), true)).toBe('198.51.100.7');
+  });
+
+  it('logs once when X-Forwarded-For arrives while TRUST_PROXY is off', async () => {
+    const logs: string[] = [];
+    h = await startHarness({ log: (s) => logs.push(s) });
+    await h.req({ path: '/health', headers: { 'X-Forwarded-For': '1.2.3.4' } });
+    await h.req({ path: '/admin/login', headers: { 'X-Forwarded-For': '1.2.3.4' } });
+    await h.req({ path: '/admin/login', headers: { 'X-Forwarded-For': '1.2.3.4' } });
+    expect(logs.filter((l) => l.includes('TRUST_PROXY')).length).toBe(1);
+  });
+
+  it('unauthenticated GET /admin/login is limited per IP', async () => {
+    h = await startHarness();
+    const statuses: number[] = [];
+    for (let i = 0; i < 61; i++) statuses.push((await h.req({ path: '/admin/login' })).status);
+    expect(statuses.slice(0, 60).every((s) => s === 200)).toBe(true);
+    expect(statuses[60]).toBe(429);
+  });
+
+  it('admin cookies are session cookies (no Max-Age)', async () => {
+    h = await startHarness();
+    const r = await adminLogin(h);
+    for (const name of ['__Host-mg_admin', '__Host-mg_admin_cb']) {
+      expect(cookieOf(r.headers['set-cookie'], name)).not.toMatch(/Max-Age|Expires/i);
+    }
   });
 });
