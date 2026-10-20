@@ -1,6 +1,7 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -10,9 +11,13 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { VERSION } from '../../src/version.js';
 
-// Runs only after `npm run build:exe` produced the exe.
-const EXE = resolve('build/multiple-gmail.exe');
+// Runs only after `npm run build:exe` produced the executable for this OS.
+const EXE_NAME = process.platform === 'win32' ? 'multiple-gmail.exe' : 'multiple-gmail';
+const EXE = resolve('build', EXE_NAME);
 const run = promisify(execFile);
+// macOS and Linux: never let the packaged binary reach the runner's real Keychain or Secret Service.
+const keyEnv: Record<string, string> =
+  process.platform === 'win32' ? {} : { MULTIPLE_GMAIL_MASTER_KEY: randomBytes(32).toString('base64') };
 
 function freePort(): Promise<number> {
   return new Promise((ok, fail) => {
@@ -24,6 +29,11 @@ function freePort(): Promise<number> {
     });
   });
 }
+
+// CI sets MG_REQUIRE_EXE=1 after building, so a missing binary fails instead of silently skipping.
+it.runIf(process.env.MG_REQUIRE_EXE === '1')('the packaged executable was built', () => {
+  expect(existsSync(EXE), EXE).toBe(true);
+});
 
 describe.skipIf(!existsSync(EXE))('packaged exe', () => {
   let root: string;
@@ -44,12 +54,13 @@ describe.skipIf(!existsSync(EXE))('packaged exe', () => {
     const dir = join(root, 'Masaüstü test');
     const home = join(root, 'home-stdio');
     await mkdir(dir, { recursive: true });
-    const exe = join(dir, 'multiple-gmail.exe');
+    const exe = join(dir, EXE_NAME);
     await copyFile(EXE, exe);
+    if (process.platform !== 'win32') await chmod(exe, 0o755);
     const transport = new StdioClientTransport({
       command: exe,
       args: ['--stdio'],
-      env: { ...(process.env as Record<string, string>), MULTIPLE_GMAIL_HOME: home },
+      env: { ...(process.env as Record<string, string>), ...keyEnv, MULTIPLE_GMAIL_HOME: home },
       stderr: 'pipe',
     });
     const errors: string[] = [];
@@ -76,7 +87,7 @@ describe.skipIf(!existsSync(EXE))('packaged exe', () => {
     let child: ChildProcess | undefined;
     try {
       child = spawn(EXE, ['--minimized'], {
-        env: { ...process.env, MULTIPLE_GMAIL_HOME: home },
+        env: { ...process.env, ...keyEnv, MULTIPLE_GMAIL_HOME: home },
         stdio: 'ignore',
       });
       const base = `http://127.0.0.1:${port}`;

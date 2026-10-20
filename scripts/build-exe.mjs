@@ -1,16 +1,23 @@
-// Builds build/main.cjs (esbuild bundle) and, unless --bundle-only, the Windows single executable
-// build/multiple-gmail.exe (Node SEA) with every file under src/web embedded as an asset keyed "web/<path>".
+// Builds build/main.cjs (esbuild bundle) and, unless --bundle-only, the single executable for this OS (Node SEA)
+// with every file under src/web embedded as an asset keyed "web/<path>":
+//   Windows build/multiple-gmail.exe, macOS and Linux build/multiple-gmail.
+// --asset-name=<name> (or MG_ASSET_NAME) also copies the result to build/release/<name> for a GitHub Release.
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BUILD = join(ROOT, 'build');
-const EXE = join(BUILD, 'multiple-gmail.exe');
+const PLATFORM = process.platform;
+const EXE_NAME = PLATFORM === 'win32' ? 'multiple-gmail.exe' : 'multiple-gmail';
+const EXE = join(BUILD, EXE_NAME);
 const FUSE = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2';
 const bundleOnly = process.argv.includes('--bundle-only');
+const assetArg = process.argv.find((a) => a.startsWith('--asset-name='));
+const assetName = assetArg ? assetArg.slice('--asset-name='.length) : process.env.MG_ASSET_NAME || '';
+if (assetName && !/^[a-z0-9][a-z0-9._-]*$/.test(assetName)) throw new Error(`Invalid asset name "${assetName}".`);
 const started = Date.now();
 
 function run(command, args) {
@@ -63,18 +70,35 @@ if (!bundleOnly) {
 
   rmSync(EXE, { force: true });
   copyFileSync(process.execPath, EXE);
-  // Optional on Windows: strip node's Authenticode signature, which the injection invalidates anyway.
-  const sign = spawnSync('signtool', ['remove', '/s', EXE], { cwd: ROOT, stdio: 'ignore' });
-  if (sign.error || sign.status !== 0) console.log('signtool not available or failed; skipping signature removal');
-  run(process.execPath, [
+  if (PLATFORM !== 'win32') chmodSync(EXE, 0o755);
+  if (PLATFORM === 'win32') {
+    // Optional on Windows: strip node's Authenticode signature, which the injection invalidates anyway.
+    const sign = spawnSync('signtool', ['remove', '/s', EXE], { cwd: ROOT, stdio: 'ignore' });
+    if (sign.error || sign.status !== 0) console.log('signtool not available or failed; skipping signature removal');
+  } else if (PLATFORM === 'darwin') {
+    // Required on macOS: the injection breaks node's signature, and arm64 refuses to run unsigned code.
+    run('/usr/bin/codesign', ['--remove-signature', EXE]);
+  }
+  const postject = [
     join(ROOT, 'node_modules', 'postject', 'dist', 'cli.js'),
     EXE,
     'NODE_SEA_BLOB',
     join(BUILD, 'sea-prep.blob'),
     '--sentinel-fuse',
     FUSE,
-  ]);
+  ];
+  if (PLATFORM === 'darwin') postject.push('--macho-segment-name', 'NODE_SEA');
+  run(process.execPath, postject);
+  // Ad-hoc signature (no identity): enough for arm64 to run it; Gatekeeper still treats a download as unidentified.
+  if (PLATFORM === 'darwin') run('/usr/bin/codesign', ['--sign', '-', EXE]);
   const mb = (statSync(EXE).size / 1024 / 1024).toFixed(1);
-  console.log(`built build/multiple-gmail.exe (${mb} MB)`);
+  console.log(`built build/${EXE_NAME} (${mb} MB)`);
+  if (assetName) {
+    const RELEASE = join(BUILD, 'release');
+    mkdirSync(RELEASE, { recursive: true });
+    copyFileSync(EXE, join(RELEASE, assetName));
+    if (PLATFORM !== 'win32') chmodSync(join(RELEASE, assetName), 0o755);
+    console.log(`copied to build/release/${assetName}`);
+  }
 }
 console.log(`done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
