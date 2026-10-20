@@ -92,18 +92,48 @@ function decodeEntities(s: string): string {
   });
 }
 
-// Small, dependency-free HTML to text. The output is plain text and is never re-interpreted as HTML.
-export function htmlToText(html: string): string {
-  let t = html
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<(script|style|head)\b[\s\S]*?<\/\1\s*>/gi, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<li\b[^>]*>/gi, '\n- ')
-    .replace(/<\/(p|div|tr|h[1-6]|ul|ol|table|blockquote)\s*>/gi, '\n\n')
-    .replace(/<(p|div|tr|h[1-6]|blockquote)\b[^>]*>/gi, '\n')
-    .replace(/<[^>]*>/g, '');
-  t = decodeEntities(t);
-  return t
+const BLOCK_CLOSE = new Set(['p', 'div', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'table', 'blockquote']);
+const BLOCK_OPEN = new Set(['p', 'div', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote']);
+
+// Small, dependency-free HTML to text. Input is bounded and the tag scan is a single linear pass (indexOf only).
+// An unclosed comment, script/style/head block or tag drops the rest of the input. Output is plain text.
+export function htmlToText(input: string): string {
+  const html = input.length > 5 * BODY_CAP ? input.slice(0, 5 * BODY_CAP) : input;
+  const lower = html.toLowerCase();
+  let out = '';
+  let pos = 0;
+  for (;;) {
+    const lt = html.indexOf('<', pos);
+    if (lt < 0) {
+      out += html.slice(pos);
+      break;
+    }
+    out += html.slice(pos, lt);
+    if (lower.startsWith('<!--', lt)) {
+      const end = html.indexOf('-->', lt + 4);
+      if (end < 0) break;
+      pos = end + 3;
+      continue;
+    }
+    const gt = html.indexOf('>', lt + 1);
+    if (gt < 0) break;
+    const m = /^(\/?)([a-z][a-z0-9]*)/.exec(lower.slice(lt + 1, Math.min(gt, lt + 40)));
+    pos = gt + 1;
+    if (!m) continue;
+    const closing = m[1] === '/';
+    const name = m[2];
+    if (!closing && (name === 'script' || name === 'style' || name === 'head')) {
+      const end = lower.indexOf('</' + name, pos);
+      if (end < 0) break;
+      const endGt = html.indexOf('>', end);
+      if (endGt < 0) break;
+      pos = endGt + 1;
+    } else if (name === 'br') out += '\n';
+    else if (name === 'li' && !closing) out += '\n- ';
+    else if (closing && BLOCK_CLOSE.has(name)) out += '\n\n';
+    else if (!closing && BLOCK_OPEN.has(name)) out += '\n';
+  }
+  return decodeEntities(out)
     .replace(/\r/g, '')
     .replace(/[ \t\f\v ]+/g, ' ')
     .replace(/ *\n */g, '\n')

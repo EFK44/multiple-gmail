@@ -288,8 +288,10 @@ export async function startLoopbackAuth(
     rejectDone = rej;
   });
 
+  let exchangeTimer: NodeJS.Timeout | undefined;
   const shutdown = () => {
     clearTimeout(timer);
+    clearTimeout(exchangeTimer);
     server.close();
     server.closeAllConnections();
   };
@@ -302,6 +304,7 @@ export async function startLoopbackAuth(
     else rejectDone(result.err);
   };
 
+  const exchangeBound = Math.min(timeoutMs, 60_000);
   const timer = setTimeout(() => {
     finish({ err: new AuthFlowError('timeout', `Google sign-in timed out after ${formatDuration(timeoutMs)}. Start again.`) });
   }, timeoutMs);
@@ -321,13 +324,18 @@ export async function startLoopbackAuth(
     }
     if (!tokens.accessToken) throw new Error('Google did not return an access token. Try again.');
     const email = (await getProfileEmail(tokens.accessToken, client)).trim();
+    // The network calls are done; the remaining steps are local file work and are not bounded by the Google timeout.
+    clearTimeout(exchangeTimer);
 
     const refreshToken = tokens.refreshToken;
+    const now = await loadConfig();
+    // Revoking a refresh token revokes the whole grant, so never do it for an email that is already connected.
+    const alreadyConnected = Object.values(now.accounts).some((entry) => sameEmail(entry.email, email));
     const reject = async (message: string): Promise<never> => {
-      await revokeQuietly(doFetch, refreshToken);
+      if (!alreadyConnected) await revokeQuietly(doFetch, refreshToken);
       throw new Error(message);
     };
-    const now = await loadConfig();
+    if (settled) throw new Error('Google sign-in timed out.');
     const current = now.accounts[a];
     if (opts.reconnect) {
       if (!current) return reject(`No account named "${a}" to reconnect.`);
@@ -343,6 +351,7 @@ export async function startLoopbackAuth(
       }
     }
 
+    if (settled) throw new Error('Google sign-in timed out.');
     await saveToken(a, {
       refreshToken: tokens.refreshToken,
       ...(tokens.accessToken ? { accessToken: tokens.accessToken } : {}),
@@ -367,8 +376,14 @@ export async function startLoopbackAuth(
       return sendPage(res, 400, pageLang, 'invalid');
     }
     handling = true;
-    // From here the callback owns the outcome: a timeout must not fire while the exchange is in flight.
+    // The flow timer is replaced by a bound on the exchange itself, so a hung Google call cannot leave the server open.
     clearTimeout(timer);
+    exchangeTimer = setTimeout(() => {
+      finish({
+        err: new AuthFlowError('timeout', `Google sign-in timed out after ${formatDuration(exchangeBound)}. Start again.`),
+      });
+    }, exchangeBound);
+    exchangeTimer.unref?.();
 
     const error = q.get('error');
     if (error) {

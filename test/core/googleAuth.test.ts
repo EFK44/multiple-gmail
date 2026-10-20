@@ -260,15 +260,18 @@ describe('startLoopbackAuth', () => {
   });
 
   it('does not time out mid-exchange: the timer is cleared once the callback is handled', async () => {
-    const base = deps({ timeoutMs: 150 }).deps;
+    await loadToken('alpha'); // warm the master key so slow key setup does not eat the bound
+    const base = deps({ timeoutMs: 600 }).deps;
     const d: LoopbackDeps = {
       ...base,
       exchangeCode: async () => {
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 400));
         return { refreshToken: 'refresh-1', accessToken: 'access-1', expiryDate: 1, scope: GMAIL_SCOPE };
       },
     };
     const { url, done } = await startLoopbackAuth('alpha', { deps: d });
+    // Callback arrives near the end of the flow timeout; the exchange then outlives the original timer.
+    await new Promise((r) => setTimeout(r, 400));
     await fetch(callbackUrl(url, { state: stateOf(url), code: 'code-1' }));
     expect(await done).toEqual({ alias: 'alpha', email: 'you@example.com' });
     expect((await loadToken('alpha'))?.refreshToken).toBe('refresh-1');
@@ -282,7 +285,7 @@ describe('startLoopbackAuth', () => {
     expect(formatDuration(300_000)).toBe('5 minutes');
   });
 
-  it('revokes the new refresh token on reconnect email mismatch and on duplicate email', async () => {
+  it('revokes only when the signed-in email is not connected under any alias', async () => {
     const calls: { url: string; body: string }[] = [];
     const fakeFetch = (async (url: string, init: { body: string }) => {
       calls.push({ url, body: init.body });
@@ -310,6 +313,38 @@ describe('startLoopbackAuth', () => {
     dup.done.catch(() => {});
     await fetch(callbackUrl(dup.url, { state: stateOf(dup.url), code: 'c' }));
     await expect(dup.done).rejects.toThrow(/already connected as alias beta/);
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(1);
+
+    // Reconnect mismatch where the signed-in email belongs to another alias: no revoke either.
+    const mm = await startLoopbackAuth('alpha', {
+      reconnect: true,
+      deps: { ...deps({ email: 'dup@example.com' }).deps, fetch: fakeFetch },
+    });
+    mm.done.catch(() => {});
+    await fetch(callbackUrl(mm.url, { state: stateOf(mm.url), code: 'c' }));
+    await expect(mm.done).rejects.toThrow(/Signed in as dup@example.com/);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('bounds a hung exchange: rejects with timeout, closes the server, saves nothing late', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const d: LoopbackDeps = {
+      ...deps({ timeoutMs: 250 }).deps,
+      exchangeCode: async () => {
+        await gate;
+        return { refreshToken: 'late', accessToken: 'a', expiryDate: 1, scope: GMAIL_SCOPE };
+      },
+    };
+    const { url, done } = await startLoopbackAuth('alpha', { deps: d });
+    done.catch(() => {});
+    fetch(callbackUrl(url, { state: stateOf(url), code: 'c' })).catch(() => {});
+    const err = (await done.catch((e: unknown) => e)) as Error & { code?: string };
+    expect(err.code).toBe('timeout');
+    release();
+    await new Promise((r) => setTimeout(r, 200));
+    expect(await loadToken('alpha')).toBeNull();
+    expect((await loadConfig()).accounts.alpha).toBeUndefined();
+    await expect(fetch(callbackUrl(url, { state: stateOf(url), code: 'c' }))).rejects.toThrow();
   });
 });

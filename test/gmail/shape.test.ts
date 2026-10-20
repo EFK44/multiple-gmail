@@ -46,6 +46,17 @@ describe('htmlToText', () => {
   });
 });
 
+describe('htmlToText bounds', () => {
+  it('converts adversarial 2 MB inputs quickly', () => {
+    for (const unit of ['<script>', '<', '<!--', '<style a="', '<p><']) {
+      const big = unit.repeat(Math.ceil((2 * 1024 * 1024) / unit.length));
+      const t0 = Date.now();
+      htmlToText(big);
+      expect(Date.now() - t0).toBeLessThan(1000);
+    }
+  });
+});
+
 describe('shapeMessage', () => {
   it('yields plaintextBody from an HTML-only multipart message', () => {
     const m = msg({
