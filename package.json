@@ -1,0 +1,35 @@
+{
+  "name": "multiple-gmail",
+  "version": "0.1.0",
+  "description": "Multi-account Gmail MCP server",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/main.ts",
+    "auth": "tsx src/main.ts accounts add",
+    "build:exe": "node scripts/build-exe.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@googleapis/gmail": "22.0.2",
+    "@modelcontextprotocol/node": "2.1.1",
+    "@modelcontextprotocol/server": "2.3.1",
+    "google-auth-library": "11.3.1",
+    "nodemailer": "10.1.7",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.3.1",
+    "@types/node": "24.19.2",
+    "@types/nodemailer": "8.0.2",
+    "esbuild": "0.28.2",
+    "postject": "1.0.0-alpha.6",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.0.5"
+  },
+  "private": false
+}
