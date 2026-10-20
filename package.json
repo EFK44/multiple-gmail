@@ -9,8 +9,14 @@
     "auth": "tsx src/main.ts accounts add",
     "build:exe": "node scripts/build-exe.mjs"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "mcp",
+    "gmail",
+    "claude",
+    "model-context-protocol",
+    "multi-account"
+  ],
+  "author": "EFK44",
   "license": "MIT",
   "type": "module",
   "dependencies": {
@@ -30,6 +36,5 @@
     "tsx": "4.23.15",
     "typescript": "6.0.3",
     "vitest": "5.0.5"
-  },
-  "private": false
+  }
 }
