@@ -49,9 +49,22 @@ export async function withAccount<T>(deps: Deps, alias: string, fn: (a: Account)
     return await fn({ alias, api, email });
   } catch (e) {
     // Local failures (fs, config, our own bugs) are not Gmail errors: leave them for run() to log and hide.
+    if (isNetworkError(e)) throw friendly(`Could not reach Gmail for ${alias}. Check the internet connection and try again.`);
     if (!isFriendly(e) && !isGoogleError(e)) throw e;
     throw toToolError(e, alias);
   }
+}
+
+const NETWORK_CODES = new Set(['ENOTFOUND', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNREFUSED']);
+
+// Network-level failure (DNS, reset, timeout, refused), possibly wrapped in `cause`.
+function isNetworkError(e: unknown): boolean {
+  for (let cur = e, i = 0; cur && typeof cur === 'object' && i < 4; i++) {
+    const code = (cur as { code?: unknown }).code;
+    if (typeof code === 'string' && NETWORK_CODES.has(code)) return true;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 // A googleapis/gaxios or google-auth-library failure: it carries an HTTP status or a response.
