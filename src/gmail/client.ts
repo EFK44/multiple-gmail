@@ -1,6 +1,8 @@
 import { gmail, type gmail_v1 } from '@googleapis/gmail';
+import { stat } from 'node:fs/promises';
 import { OAuth2Client } from 'google-auth-library';
-import { getAccount, loadConfig } from '../core/config.js';
+import { getAccount, loadConfig, validateId } from '../core/config.js';
+import { tokenPath } from '../core/paths.js';
 import { loadClient, loadToken, saveToken } from '../core/secrets.js';
 import { friendly, reauthMessage, setAccountStatus } from './errors.js';
 
@@ -25,9 +27,12 @@ export function setGmailFactoryForTests(f: GmailFactory | null): void {
 }
 
 type Entry = { api: GmailApi; email: string };
-const cache = new Map<string, Promise<Entry>>();
+// What a cached client was built from: another process (a reconnect in the setup window) may replace the token file,
+// so a long-lived process compares the file signature, then the refresh token, before reusing a client.
+type Cached = Entry & { refreshToken: string; sig: string };
+const cache = new Map<string, Promise<Cached>>();
 
-// Drops cached clients (all, or one alias). Clearing an alias also resets its status: used after reconnect and remove.
+// Drops cached clients (all, or one id). Clearing an id also resets its status: used after reconnect and remove.
 export function clearGmailCache(alias?: string): void {
   if (alias === undefined) {
     cache.clear();
@@ -37,12 +42,27 @@ export function clearGmailCache(alias?: string): void {
   setAccountStatus(alias, 'ok');
 }
 
-async function build(alias: string): Promise<Entry> {
+// Drops one cached client but keeps its status (used when Google rejected its credentials).
+export function evictGmail(id: string): void {
+  cache.delete(id);
+}
+
+async function tokenSig(id: string): Promise<string> {
+  try {
+    const s = await stat(tokenPath(validateId(id)));
+    return `${s.mtimeMs}:${s.ctimeMs}:${s.size}:${s.ino}`;
+  } catch {
+    return 'missing';
+  }
+}
+
+async function build(alias: string): Promise<Cached> {
   const cfg = await loadConfig();
   const account = getAccount(cfg, alias);
   if (!account) throw friendly(`Unknown account ${alias}`);
   const client = await loadClient();
   if (!client) throw friendly('No Google OAuth client configured. Open multiple-gmail to finish setup.');
+  const sig = await tokenSig(alias);
   const token = await loadToken(alias);
   if (!token) {
     setAccountStatus(alias, 'needs_reauth');
@@ -70,24 +90,39 @@ async function build(alias: string): Promise<Entry> {
           ...(typeof expiryDate === 'number' ? { expiryDate } : {}),
           scope: t.scope ?? cur?.scope ?? token.scope,
         });
+        // Our own rotation must not look like a reconnect from elsewhere.
+        entry.refreshToken = refreshToken;
       } catch {
         // ignored
       }
     })();
   });
-  return { api: factory(auth), email: account.email };
+  const entry: Cached = { api: factory(auth), email: account.email, refreshToken: token.refreshToken, sig };
+  return entry;
 }
 
-export function getGmail(alias: string): Promise<Entry> {
-  let p = cache.get(alias);
-  if (!p) {
-    const created = build(alias);
-    p = created;
-    cache.set(alias, created);
-    // A failed build must not stay cached.
-    created.catch(() => {
-      if (cache.get(alias) === created) cache.delete(alias);
-    });
+function start(id: string): Promise<Cached> {
+  const created = build(id);
+  cache.set(id, created);
+  // A failed build must not stay cached.
+  created.catch(() => {
+    if (cache.get(id) === created) cache.delete(id);
+  });
+  return created;
+}
+
+export async function getGmail(id: string): Promise<Entry> {
+  const p = cache.get(id);
+  if (!p) return start(id);
+  const entry = await p;
+  const sig = await tokenSig(id);
+  if (sig === entry.sig) return entry;
+  const token = await loadToken(id);
+  if (token && token.refreshToken === entry.refreshToken) {
+    entry.sig = sig;
+    return entry;
   }
-  return p;
+  // The token changed elsewhere (reconnect) or was removed: rebuild from the current files.
+  const again = cache.get(id);
+  return again && again !== p ? again : start(id);
 }

@@ -1,8 +1,8 @@
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import type { gmail_v1 } from '@googleapis/gmail';
 import type { loadConfig } from '../../core/config.js';
-import type { GmailApi, getGmail } from '../../gmail/client.js';
-import { friendly, toToolError } from '../../gmail/errors.js';
+import { evictGmail, type GmailApi, type getGmail } from '../../gmail/client.js';
+import { friendly, getAccountStatus, setAccountStatus, toToolError } from '../../gmail/errors.js';
 import type { MessageFormat } from '../../gmail/shape.js';
 import { resolveAccounts, type ResolvedAccount } from '../accountArg.js';
 
@@ -48,12 +48,17 @@ export async function withAccount<T>(deps: Deps, acct: ResolvedAccount, fn: (a: 
   const { id, name } = acct;
   try {
     const { api, email } = await deps.getGmail(id);
-    return await fn({ id, name, api, email });
+    const result = await fn({ id, name, api, email });
+    setAccountStatus(id, 'ok');
+    return result;
   } catch (e) {
     // Local failures (fs, config, our own bugs) are not Gmail errors: leave them for run() to log and hide.
     if (isNetworkError(e)) throw friendly(`Could not reach Gmail for ${name}. Check the internet connection and try again.`);
     if (!isFriendly(e) && !isGoogleError(e)) throw e;
-    throw toToolError(e, id, name);
+    const mapped = toToolError(e, id, name);
+    // Rejected credentials: drop the client so the next call rebuilds from the token file (a reconnect elsewhere).
+    if (getAccountStatus(id) === 'needs_reauth') evictGmail(id);
+    throw mapped;
   }
 }
 

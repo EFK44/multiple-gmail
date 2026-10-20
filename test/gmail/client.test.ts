@@ -4,11 +4,12 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { OAuth2Client } from 'google-auth-library';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { saveConfig } from '../../src/core/config.js';
+import { loadConfig, saveConfig } from '../../src/core/config.js';
 import { resetMasterKeyCacheForTests } from '../../src/core/masterKey.js';
 import { loadToken, saveClient, saveToken } from '../../src/core/secrets.js';
 import { clearGmailCache, getGmail, setGmailFactoryForTests, type GmailApi } from '../../src/gmail/client.js';
 import { getAccountStatus, setAccountStatus } from '../../src/gmail/errors.js';
+import { withAccount } from '../../src/mcp/tools/util.js';
 import { restoreTestHome } from '../setup.js';
 
 let root: string;
@@ -95,5 +96,54 @@ describe('getGmail', () => {
       await new Promise((r) => setTimeout(r, 20));
     }
     expect(await loadToken('alpha')).toEqual({ refreshToken: 'r1', accessToken: 'a2', expiryDate: 99, scope: 's' });
+  });
+
+  it('notices a reconnect done by another process without clearGmailCache', async () => {
+    await seed();
+    let built = 0;
+    setGmailFactoryForTests((auth) => {
+      built++;
+      const rt = auth.credentials.refresh_token;
+      return {
+        users: {
+          labels: {
+            list: async () => {
+              if (rt === 'r1') {
+                throw Object.assign(new Error('invalid_grant'), { response: { status: 400, data: { error: 'invalid_grant' } } });
+              }
+              return { data: { labels: [] } };
+            },
+          },
+        },
+      } as unknown as GmailApi;
+    });
+    const deps = { getGmail, loadConfig };
+    const acct = { id: 'alpha', name: 'alpha' };
+    const call = () => withAccount(deps, acct, async (a) => (await a.api.users.labels.list({ userId: 'me' })).data);
+    await expect(call()).rejects.toThrow(/needs re-authorization/);
+    expect(getAccountStatus('alpha')).toBe('needs_reauth');
+    // Another process reconnects: it writes a new token file.
+    await saveToken('alpha', { refreshToken: 'r2', accessToken: 'a2', expiryDate: 2, scope: 's' });
+    await expect(call()).resolves.toEqual({ labels: [] });
+    expect(getAccountStatus('alpha')).toBe('ok');
+    expect(built).toBe(2);
+  });
+
+  it('reloads a cached client when the token file changes, and keeps it when only the access token changed', async () => {
+    await seed();
+    const seen: (string | null | undefined)[] = [];
+    setGmailFactoryForTests((auth) => {
+      seen.push(auth.credentials.refresh_token);
+      return { users: {} } as unknown as GmailApi;
+    });
+    await getGmail('alpha');
+    await getGmail('alpha');
+    expect(seen).toEqual(['r1']);
+    await saveToken('alpha', { refreshToken: 'r1', accessToken: 'a9', expiryDate: 9, scope: 's' });
+    await getGmail('alpha');
+    expect(seen).toEqual(['r1']);
+    await saveToken('alpha', { refreshToken: 'r3', scope: 's' });
+    await getGmail('alpha');
+    expect(seen).toEqual(['r1', 'r3']);
   });
 });
