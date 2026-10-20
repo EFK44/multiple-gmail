@@ -17,14 +17,29 @@ export function fail(message: string): CallToolResult {
   return { content: [{ type: 'text', text: message }], isError: true };
 }
 
-// Runs a tool body. Errors become isError results; only messages are exposed, never error objects.
+export const INTERNAL_ERROR = 'Internal error in multiple-gmail; see the app console for details.';
+
+const isFriendly = (e: unknown): e is Error =>
+  e instanceof Error && (e as Error & { mgFriendly?: boolean }).mgFriendly === true;
+
+// Runs a tool body. Errors become isError results. Only messages written for the AI are exposed; anything else
+// (fs or config failures that may name local paths) is logged to stderr and replaced by a generic message.
 export async function run(fn: () => Promise<Record<string, unknown>>): Promise<CallToolResult> {
   try {
     return ok(await fn());
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'unexpected error';
-    return fail(msg.slice(0, 500) || 'unexpected error');
+    return fail(safeMessage(e));
   }
+}
+
+// HTTP status of a googleapis/gaxios error, if any.
+export function httpStatus(e: unknown): number | undefined {
+  const err = e as { response?: { status?: unknown }; status?: unknown; code?: unknown } | null;
+  for (const v of [err?.response?.status, err?.status, err?.code]) {
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string' && /^\d+$/.test(v)) return Number(v);
+  }
+  return undefined;
 }
 
 // Opens one account and runs `fn` on it; any failure is mapped by toToolError so raw googleapis errors never escape.
@@ -33,8 +48,22 @@ export async function withAccount<T>(deps: Deps, alias: string, fn: (a: Account)
     const { api, email } = await deps.getGmail(alias);
     return await fn({ alias, api, email });
   } catch (e) {
+    // Local failures (fs, config, our own bugs) are not Gmail errors: leave them for run() to log and hide.
+    if (!isFriendly(e) && !isGoogleError(e)) throw e;
     throw toToolError(e, alias);
   }
+}
+
+// A googleapis/gaxios or google-auth-library failure: it carries an HTTP status or a response.
+function isGoogleError(e: unknown): boolean {
+  return httpStatus(e) !== undefined || !!(e as { response?: unknown } | null)?.response;
+}
+
+// The message an error may show to the AI; anything not written for it is logged and replaced.
+export function safeMessage(e: unknown): string {
+  if (isFriendly(e)) return e.message.slice(0, 500) || 'unexpected error';
+  console.error('multiple-gmail tool error:', e instanceof Error ? (e.stack ?? e.message) : String(e));
+  return INTERNAL_ERROR;
 }
 
 export async function oneAccount<T>(deps: Deps, arg: string, fn: (a: Account) => Promise<T>): Promise<T> {
@@ -62,7 +91,7 @@ export async function fanOut(
   const errors: { account: string; message: string }[] = [];
   settled.forEach((s, i) => {
     if (s.status === 'fulfilled') results.push({ account: aliases[i], ...s.value });
-    else errors.push({ account: aliases[i], message: s.reason instanceof Error ? s.reason.message : 'unexpected error' });
+    else errors.push({ account: aliases[i], message: safeMessage(s.reason) });
   });
   return { results, errors };
 }

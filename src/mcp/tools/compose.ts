@@ -7,7 +7,9 @@ import { parseAddressList, viewUrl } from '../../gmail/shape.js';
 import { accountParam } from '../accountArg.js';
 import { notDraft, oneAccount, run, type Deps } from './util.js';
 
-const APPROVAL = 'Use ONLY after the user has explicitly approved sending this exact message.';
+const APPROVAL =
+  'Use ONLY after the user has explicitly approved sending this exact message in the conversation. ' +
+  'Prefer create_draft first, then send_message with draftId.';
 
 const addresses = (what: string) =>
   z.array(z.string().min(1)).optional().describe(`${what} email addresses, for example ["Name <a@example.com>"].`);

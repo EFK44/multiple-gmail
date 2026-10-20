@@ -3,7 +3,7 @@ import * as z from 'zod/v4';
 import { friendly } from '../../gmail/errors.js';
 import { shapeMessage, viewUrl, type MessageFormat } from '../../gmail/shape.js';
 import { accountParam } from '../accountArg.js';
-import { apiFormat, fanOut, mapLimit, notDraft, oneAccount, READ_ONLY, run, type Deps } from './util.js';
+import { apiFormat, fanOut, httpStatus, mapLimit, notDraft, oneAccount, READ_ONLY, run, type Deps } from './util.js';
 
 // Per-account parallelism for follow-up gets (thread or draft details).
 const DETAIL_CONCURRENCY = 10;
@@ -56,7 +56,14 @@ export function registerReadTools(server: McpServer, deps: Deps): void {
           const found = res.data.threads ?? [];
           const threads = await mapLimit(found, DETAIL_CONCURRENCY, async (t) => {
             const id = t.id ?? '';
-            const full = await api.users.threads.get({ userId: 'me', id, format: 'minimal' });
+            let full;
+            try {
+              full = await api.users.threads.get({ userId: 'me', id, format: 'minimal' });
+            } catch (e) {
+              // Deleted between list and get: skip it. Other failures fail the account (mapped by toToolError).
+              if (httpStatus(e) === 404) return null;
+              throw e;
+            }
             return {
               id,
               viewUrl: viewUrl(email, id),
@@ -65,7 +72,7 @@ export function registerReadTools(server: McpServer, deps: Deps): void {
             };
           });
           return {
-            threads: threads.filter((t) => t.messages.length > 0),
+            threads: threads.filter((t) => t !== null && t.messages.length > 0),
             ...(res.data.nextPageToken ? { nextPageToken: res.data.nextPageToken } : {}),
           };
         }),
