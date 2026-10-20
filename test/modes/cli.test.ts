@@ -108,11 +108,35 @@ describe('cli', () => {
     expect(await runCli(['--help'], o)).toBe(0);
   });
 
-  it('modes that are not built yet exit 2', async () => {
-    for (const args of [[], ['--minimized'], ['serve', '--remote']]) {
-      const o = io();
-      expect(await runCli(args, o)).toBe(2);
-      expect(o.err.join('\n')).toContain('Not available yet');
-    }
+  it('remote mode is not built yet and exits 2', async () => {
+    const o = io();
+    expect(await runCli(['serve', '--remote'], o)).toBe(2);
+    expect(o.err.join('\n')).toContain('Not available yet');
+  });
+
+  it('no args and --minimized start the local server, minimized without a browser', async () => {
+    const calls: unknown[] = [];
+    const startLocal = async (opts: { openBrowser: boolean }) => {
+      calls.push(opts);
+      return 0;
+    };
+    expect(await runCli([], io({ startLocal }))).toBe(0);
+    expect(await runCli(['--minimized'], io({ startLocal }))).toBe(0);
+    expect(calls).toEqual([{ openBrowser: true }, { openBrowser: false }]);
+  });
+
+  it('remove on a non-TTY without --yes refuses', async () => {
+    await saveConfig({
+      port: 47110,
+      language: 'en',
+      defaultAccount: 'alpha',
+      accounts: { alpha: { email: 'you@example.com', addedAt: '2026-10-01T00:00:00.000Z' } },
+    });
+    const o = io({ isTty: false });
+    expect(await runCli(['accounts', 'remove', 'alpha'], o)).toBe(1);
+    expect(o.err.join('\n')).toContain('Use --yes to confirm removal in non-interactive mode');
+    const list = io();
+    await runCli(['accounts', 'list'], list);
+    expect(list.out.join('\n')).toContain('alpha');
   });
 });

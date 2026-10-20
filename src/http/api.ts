@@ -1,0 +1,211 @@
+import { removeAccount } from '../core/accounts.js';
+import { loadConfig, saveConfig, validateAlias } from '../core/config.js';
+import { AuthFlowError, startLoopbackAuth } from '../core/googleAuth.js';
+import {
+  getLocalApiKey,
+  loadClient,
+  parseClientJson,
+  rotateLocalApiKey,
+  saveClient,
+} from '../core/secrets.js';
+import { clearGmailCache } from '../gmail/client.js';
+import { getAccountStatus } from '../gmail/errors.js';
+
+export type ApiDeps = {
+  startLoopbackAuth: typeof startLoopbackAuth;
+  removeAccount: (alias: string) => Promise<{ revoked: boolean }>;
+};
+
+export type ApiRequest = {
+  method: string;
+  // Path after "/api", for example "/state" or "/accounts/alpha/status".
+  path: string;
+  // Raw request body (utf8), "" when there is none.
+  body: string;
+  // True when the request is provably same-origin (checked by the router).
+  sameOrigin: boolean;
+};
+
+export type ApiResponse = { status: number; json: unknown };
+
+type FlowState = {
+  id: number;
+  status: 'pending' | 'connected' | 'failed';
+  reason?: string;
+  message?: string;
+  email?: string;
+  clientId?: string;
+};
+
+const ok = (json: unknown): ApiResponse => ({ status: 200, json });
+const fail = (status: number, error: string): ApiResponse => ({ status, json: { error } });
+
+export function maskKey(key: string): string {
+  return `****${key.slice(-4)}`;
+}
+
+function parseJson(body: string): Record<string, unknown> | null {
+  if (!body) return {};
+  try {
+    const v: unknown = JSON.parse(body);
+    return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function aliasFrom(raw: string): string | null {
+  try {
+    return validateAlias(decodeURIComponent(raw));
+  } catch {
+    return null;
+  }
+}
+
+// Wizard JSON API. Authentication (session cookie) and the Origin check happen in the router before this runs.
+export function createApi(partial: Partial<ApiDeps> = {}) {
+  const deps: ApiDeps = {
+    startLoopbackAuth: partial.startLoopbackAuth ?? startLoopbackAuth,
+    removeAccount: partial.removeAccount ?? ((alias) => removeAccount(alias)),
+  };
+  const flows = new Map<string, FlowState>();
+  let nextFlowId = 1;
+
+  async function beginConnect(alias: string, email: string | undefined, reconnect: boolean): Promise<ApiResponse> {
+    const cfg = await loadConfig();
+    let started: Awaited<ReturnType<ApiDeps['startLoopbackAuth']>>;
+    try {
+      started = await deps.startLoopbackAuth(alias, { loginHint: email, lang: cfg.language, reconnect });
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (/No OAuth client/i.test(msg)) return fail(409, msg);
+      if (/Alias already exists|No account named/i.test(msg)) return fail(409, msg);
+      return fail(500, 'Could not start Google sign-in.');
+    }
+    const id = nextFlowId++;
+    flows.set(alias, { id, status: 'pending' });
+    const current = () => flows.get(alias)?.id === id;
+    // Always handled: an unhandled rejection here would crash the server.
+    started.done.then(
+      (acct) => {
+        clearGmailCache(acct.alias);
+        if (current()) flows.set(alias, { id, status: 'connected', email: acct.email });
+      },
+      async (e: unknown) => {
+        const reason = e instanceof AuthFlowError ? e.code : 'unknown';
+        const state: FlowState = { id, status: 'failed', reason };
+        if (e instanceof Error) state.message = e.message;
+        if (reason === 'admin_blocked') {
+          state.clientId = (await loadClient().catch(() => null))?.clientId;
+        }
+        if (current()) flows.set(alias, state);
+      },
+    ).catch(() => {});
+    return ok({ authUrl: started.url });
+  }
+
+  async function state(): Promise<ApiResponse> {
+    const cfg = await loadConfig();
+    const client = await loadClient().catch(() => null);
+    const key = await getLocalApiKey();
+    return ok({
+      hasClient: client !== null,
+      language: cfg.language,
+      defaultAccount: cfg.defaultAccount,
+      accounts: Object.entries(cfg.accounts).map(([alias, a]) => ({
+        alias,
+        email: a.email,
+        status: getAccountStatus(alias),
+      })),
+      apiKeyMasked: maskKey(key),
+    });
+  }
+
+  return async function handle(req: ApiRequest): Promise<ApiResponse> {
+    const { method, path } = req;
+    const parts = path.split('/').filter(Boolean);
+
+    if (path === '/state' && method === 'GET') return state();
+
+    if (path === '/client' && method === 'POST') {
+      let client;
+      try {
+        client = parseClientJson(req.body);
+      } catch (e) {
+        return fail(400, (e as Error).message);
+      }
+      await saveClient(client);
+      return ok({ ok: true, kind: client.kind });
+    }
+
+    if (path === '/accounts' && method === 'POST') {
+      const body = parseJson(req.body);
+      if (!body) return fail(400, 'Expected a JSON object.');
+      if (typeof body.alias !== 'string') return fail(400, 'alias is required.');
+      let alias: string;
+      try {
+        alias = validateAlias(body.alias);
+      } catch (e) {
+        return fail(400, (e as Error).message);
+      }
+      const email = body.email;
+      if (email !== undefined && (typeof email !== 'string' || email.length > 320)) {
+        return fail(400, 'email must be a string.');
+      }
+      return beginConnect(alias, email ? email.trim() : undefined, false);
+    }
+
+    if (parts[0] === 'accounts' && parts.length >= 2) {
+      const alias = aliasFrom(parts[1]);
+      if (!alias) return fail(400, 'Invalid account alias.');
+      if (parts.length === 3 && parts[2] === 'status' && method === 'GET') {
+        const flow = flows.get(alias);
+        if (flow) {
+          const { id: _id, ...rest } = flow;
+          return ok(rest);
+        }
+        if ((await loadConfig()).accounts[alias]) return ok({ status: 'connected' });
+        return fail(404, `Unknown account "${alias}".`);
+      }
+      if (parts.length === 3 && parts[2] === 'reconnect' && method === 'POST') {
+        return beginConnect(alias, undefined, true);
+      }
+      if (parts.length === 2 && method === 'DELETE') {
+        try {
+          const { revoked } = await deps.removeAccount(alias);
+          clearGmailCache(alias);
+          flows.delete(alias);
+          return ok({ ok: true, revoked });
+        } catch (e) {
+          const msg = (e as Error).message;
+          if (/No account named/.test(msg)) return fail(404, `Unknown account "${alias}".`);
+          return fail(500, 'Could not remove the account.');
+        }
+      }
+    }
+
+    if (path === '/apikey' && method === 'GET') {
+      if (!req.sameOrigin) return fail(403, 'Forbidden.');
+      return ok({ apiKey: await getLocalApiKey() });
+    }
+
+    if (path === '/apikey/rotate' && method === 'POST') {
+      return ok({ apiKeyMasked: maskKey(await rotateLocalApiKey()) });
+    }
+
+    if (path === '/language' && method === 'POST') {
+      const body = parseJson(req.body);
+      const language = body?.language;
+      if (language !== 'en' && language !== 'tr') return fail(400, 'language must be "en" or "tr".');
+      const cfg = await loadConfig();
+      await saveConfig({ ...cfg, language });
+      return ok({ ok: true, language });
+    }
+
+    // Task 11 adds here: POST /integrations/:client and POST /autostart {enabled}.
+
+    return fail(404, 'Not found.');
+  };
+}
+
+export type ApiHandler = ReturnType<typeof createApi>;

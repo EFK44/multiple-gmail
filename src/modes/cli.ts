@@ -1,13 +1,13 @@
-import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { removeAccount } from '../core/accounts.js';
 import { loadConfig, validateAlias } from '../core/config.js';
 import { AuthFlowError, startLoopbackAuth } from '../core/googleAuth.js';
 import { loadClient } from '../core/secrets.js';
-import { system32Dir, systemBinary } from '../core/sysbin.js';
+import { openUrl } from '../core/openUrl.js';
 import { clearGmailCache } from '../gmail/client.js';
 import { VERSION } from '../version.js';
+import { runLocalMode } from './localHttp.js';
 
 export type CliIo = {
   log: (s: string) => void;
@@ -15,6 +15,8 @@ export type CliIo = {
   isTty: boolean;
   confirm: (prompt: string) => Promise<string>;
   openUrl: (url: string) => Promise<void>;
+  // Starts the local setup server (no args, --minimized); injectable for tests.
+  startLocal?: (opts: { openBrowser: boolean }) => Promise<number>;
 };
 
 export const EXIT_OK = 0;
@@ -23,7 +25,8 @@ export const EXIT_NOT_AVAILABLE = 2;
 
 const USAGE = `Usage: multiple-gmail [command]
 
-  (no command)                        open the local setup app (not available yet)
+  (no command)                        open the local setup app in the browser
+  --minimized                         start the local server without opening the browser
   --stdio                             run as an MCP server over stdio
   accounts list                       list connected accounts
   accounts add --alias X [--email Y]  connect a Gmail account
@@ -47,25 +50,8 @@ export function defaultIo(): CliIo {
       }
     },
     openUrl,
+    startLocal: (opts) => runLocalMode(opts),
   };
-}
-
-// Best effort browser launch; failures are ignored (the URL is always printed too).
-export async function openUrl(url: string): Promise<void> {
-  if (!/^https?:\/\//i.test(url)) return;
-  await new Promise<void>((resolve) => {
-    const done = () => resolve();
-    try {
-      if (process.platform === 'win32') {
-        // explorer.exe exits with code 1 even on success: the exit code is ignored.
-        execFile(systemBinary('explorer'), [url], { cwd: system32Dir() }, done);
-      } else {
-        execFile(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], done);
-      }
-    } catch {
-      done();
-    }
-  });
 }
 
 // Placeholder for modes that later tasks implement; only the handler needs replacing then.
@@ -191,7 +177,11 @@ async function accounts(args: string[], io: CliIo): Promise<number> {
       io.error(`Unknown account "${alias}".`);
       return EXIT_USER_ERROR;
     }
-    if (flags.get('--yes') !== true && io.isTty) {
+    if (flags.get('--yes') !== true && !io.isTty) {
+      io.error('Use --yes to confirm removal in non-interactive mode.');
+      return EXIT_USER_ERROR;
+    }
+    if (flags.get('--yes') !== true) {
       const answer = (await io.confirm('Type the alias to confirm: ')).trim().toLowerCase();
       if (answer !== alias) {
         io.error('Cancelled: the alias did not match.');
@@ -221,7 +211,10 @@ async function accounts(args: string[], io: CliIo): Promise<number> {
 export async function runCli(argv: string[], io: CliIo = defaultIo()): Promise<number> {
   const [cmd, ...rest] = argv;
   try {
-    if (cmd === undefined || cmd === '--minimized') return notAvailableYet('the local setup app', io);
+    if (cmd === undefined || cmd === '--minimized') {
+      const startLocal = io.startLocal ?? ((opts) => runLocalMode(opts));
+      return await startLocal({ openBrowser: cmd === undefined });
+    }
     if (cmd === '--version' || cmd === '-v') {
       io.log(VERSION);
       return EXIT_OK;

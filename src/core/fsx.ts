@@ -7,6 +7,35 @@ export interface WriteAtomicOptions {
   exclusive?: boolean;
 }
 
+export type RenameRetryDeps = {
+  rename?: (from: string, to: string) => Promise<void>;
+  sleep?: (ms: number) => Promise<void>;
+  platform?: NodeJS.Platform;
+};
+
+const RETRYABLE = new Set(['EPERM', 'EACCES', 'EBUSY']);
+const MAX_RETRIES = 10;
+
+// On Windows, rename fails with EPERM/EACCES/EBUSY while another process (the other mode, an antivirus scanner)
+// has the target open. Retry with backoff: 10 ms doubling, capped at 200 ms, at most 10 retries.
+export async function renameWithRetry(from: string, to: string, deps: RenameRetryDeps = {}): Promise<void> {
+  const doRename = deps.rename ?? rename;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const retry = (deps.platform ?? process.platform) === 'win32';
+  let delay = 10;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await doRename(from, to);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (!retry || attempt >= MAX_RETRIES || !code || !RETRYABLE.has(code)) throw err;
+      await sleep(delay);
+      delay = Math.min(delay * 2, 200);
+    }
+  }
+}
+
 export async function writeFileAtomic(
   file: string,
   data: string | Buffer,
@@ -20,7 +49,7 @@ export async function writeFileAtomic(
       await link(tmp, file);
       await rm(tmp, { force: true });
     } else {
-      await rename(tmp, file);
+      await renameWithRetry(tmp, file);
     }
   } catch (err) {
     await rm(tmp, { force: true });
