@@ -1,0 +1,274 @@
+{
+  "app": {
+    "name": "multiple-gmail",
+    "tagline": "Bütün Gmail hesapların, yapay zekâ uygulamalarında.",
+    "skip": "İçeriğe geç",
+    "loading": "Yükleniyor..."
+  },
+  "lang": {
+    "label": "Dil",
+    "en": "English",
+    "tr": "Türkçe"
+  },
+  "nav": {
+    "label": "Kurulum adımları",
+    "welcome": "Hoş geldin",
+    "google": "Google Cloud",
+    "upload": "Anahtar dosyası",
+    "accounts": "Gmail hesapları",
+    "ai": "Yapay zekânı bağla",
+    "dashboard": "Kontrol paneli",
+    "locked": "Önce önceki adımları bitir",
+    "done": "tamam",
+    "current": "şu anki adım",
+    "stepOf": "Adım {n} / {total}"
+  },
+  "common": {
+    "next": "Devam",
+    "back": "Geri",
+    "copy": "Kopyala",
+    "copied": "Kopyalandı.",
+    "copyFailed": "Kopyalanamadı. Metni seçip Ctrl+C tuşlarına bas.",
+    "cancel": "Vazgeç",
+    "working": "Çalışıyor...",
+    "newTab": "yeni sekmede açılır",
+    "mayDiffer": "Google sitesini ara ara değiştirir; bir düğmenin ya da menünün adı biraz farklı olabilir. En yakın olanı seç. Google Cloud Türkçe açılırsa düğme adları çevrilmiş olabilir; burada İngilizce adlarını tırnak içinde yazdık.",
+    "mayDifferShort": "Google sitesini ara ara değiştirir; bir menünün adı biraz farklı olabilir. En yakın olanı seç."
+  },
+  "errors": {
+    "session": "Bu sayfanın oturumu bitti. Sekmeyi kapat ve multiple-gmail'i yeniden açarak yeni bir sayfa al.",
+    "network": "multiple-gmail yanıt vermiyor. Penceresinin hâlâ açık olduğunu kontrol et ve tekrar dene.",
+    "server": "multiple-gmail bir sorun bildirdi (İngilizce): {message}"
+  },
+  "welcome": {
+    "title": "Gmail hesaplarını bağlayalım",
+    "lead": "Bu kurulum yaklaşık 15 dakika sürer ve sadece bir kez yapılır. Sonrasında Claude gibi yapay zekâ uygulamaları, bağladığın her Gmail hesabındaki postaları okuyabilir, düzenleyebilir ve taslak yazabilir.",
+    "planTitle": "Neler yapacaksın",
+    "plan1": "Ücretsiz bir Google Cloud projesi oluşturacaksın. Bu sana Gmail için kendine ait, özel bir anahtar verir.",
+    "plan2": "Bu anahtar dosyasını bu sayfaya yükleyeceksin.",
+    "plan3": "Kullanmak istediğin her Gmail hesabına giriş yapıp ona kısa bir takma ad vereceksin.",
+    "plan4": "multiple-gmail'i yapay zekâ uygulamana ekleyeceksin.",
+    "privacy": "Girişlerin sadece bu bilgisayarda, şifrelenmiş olarak saklanır. multiple-gmail'in kendi sunucusu yoktur ve postalarını başka kimse görmez.",
+    "keepOpen": "Burada çalışırken multiple-gmail penceresini (bu sayfayla birlikte açılan siyah pencere) açık tut. Kapatırsan bu sayfa da çalışmaz.",
+    "langPrompt": "Dilini seç",
+    "start": "Kuruluma başla"
+  },
+  "google": {
+    "title": "Google Cloud'u hazırla",
+    "lead": "Google'ın, multiple-gmail'in senin adına Gmail'i kullanabileceğini bilmesi gerekiyor. Bunu Google Cloud'da, yani Google'ın uygulama ayarları sitesinde söylersin. Ücretsizdir: fatura bilgisi ya da kredi kartı gerekmez.",
+    "progress": "{total} adımdan {done} tanesi tamam",
+    "markDone": "Bu adımı yaptım",
+    "open": "Bu sayfayı Google Cloud'da aç",
+    "whyLabel": "Neden:",
+    "s1": {
+      "title": "Proje oluştur",
+      "why": "Proje, Google Cloud'da ayarlarını bir arada tutan bir klasördür.",
+      "do1": "Herhangi bir Google hesabıyla giriş yap. Kişisel Gmail hesabın olur.",
+      "do2": "Bir proje adı yaz, örneğin multiple-gmail, ve \"Create\" düğmesine tıkla.",
+      "do3": "Birkaç saniye bekle. Sayfanın en üstündeki proje seçicide yeni projenin seçili olduğunu kontrol et."
+    },
+    "s2": {
+      "title": "Gmail API'yi aç",
+      "why": "Gmail API, multiple-gmail gibi bir programın Gmail ile çalışmasını sağlayan kapıdır.",
+      "do1": "Sayfanın en üstünde yeni projenin seçili olduğunu kontrol et.",
+      "do2": "\"Enable\" düğmesine tıkla."
+    },
+    "s3": {
+      "title": "Uygulamanı tanıt",
+      "why": "Google bu bilgileri giriş ekranında gösterir. Bunu sadece sen göreceksin.",
+      "do1": "Google Auth Platform'u aç ve \"Get started\" düğmesine tıkla.",
+      "do2": "\"App information\": bir uygulama adı yaz, örneğin Gmail yardımcım, ve destek e-postası (\"User support email\") olarak kendi adresini seç. \"Next\" de.",
+      "do3": "\"Audience\": \"External\" seç. \"Next\" de.",
+      "do4": "\"Contact information\": e-posta adresini yaz. \"Next\" de.",
+      "do5": "Google API Hizmetleri Kullanıcı Verileri Politikası'nı kabul eden kutuyu işaretle, sonra \"Continue\" ve \"Create\" düğmelerine tıkla."
+    },
+    "s4": {
+      "title": "Gmail iznini ekle",
+      "why": "Kapsam (scope) bir izindir. Bu izin multiple-gmail'in postaları okumasına, etiketlemesine, taslak yazmasına ve göndermesine izin verir. Postaları kalıcı olarak silemez.",
+      "do1": "\"Data access\" sayfasını aç ve \"Add or remove scopes\" düğmesine tıkla.",
+      "do2": "Açılan panelin altında \"Manually add scopes\" bölümünü bul. Aşağıdaki adresi yapıştır ve \"Add to table\" de.",
+      "do3": "\"Update\" de, sonra sayfanın altındaki \"Save\" düğmesine tıkla.",
+      "scopeLabel": "İzin adresi"
+    },
+    "s5": {
+      "title": "Anahtar dosyasını oluştur",
+      "why": "İstemci (client), uygulamanın kimlik kartıdır. Google bunu sana client_secret_123.json gibi adı olan küçük bir dosya olarak verir.",
+      "do1": "\"Clients\" sayfasını aç ve \"Create client\" düğmesine tıkla.",
+      "do2": "\"Application type\": \"Desktop app\" seç. Ad: istediğin bir şey, örneğin multiple-gmail masaüstü. \"Create\" de.",
+      "do3": "Açılan pencerede \"Download JSON\" düğmesine tıkla ve dosyayı bulabileceğin bir yere, örneğin İndirilenler klasörüne kaydet.",
+      "note": "Dosyayı hemen indir. Google gizli kısmı sadece bir kez gösterebilir. Kaçırdıysan istemciyi sil ve yenisini oluştur."
+    },
+    "s6": {
+      "title": "Uygulamayı yayınla",
+      "why": "Yeni uygulamalar \"Testing\" (deneme) modunda başlar. Deneme modunda Google seni 7 günde bir oturumdan çıkarır ve her hafta bütün hesapları yeniden bağlaman gerekir. Yayınlamak bunu önler.",
+      "do1": "\"Audience\" sayfasını aç. \"Publishing status\" altında \"Publish app\" düğmesine, sonra \"Confirm\" düğmesine tıkla.",
+      "do2": "Durum artık \"In production\" (yayında) yazmalı.",
+      "do3": "Google uygulamanın doğrulanması gerektiğini söyleyebilir. Bunu boş verebilirsin: doğrulama, başka insanların kullandığı uygulamalar içindir."
+    },
+    "aheadTitle": "Daha sonra giriş yaparken göreceğin iki ekran",
+    "ahead1Title": "\"Google bu uygulamayı doğrulamadı\" (Google hasn't verified this app)",
+    "ahead1": "Bu beklenen bir durumdur. Uygulama senin: birkaç dakika önce sen oluşturdun ve sadece kendi hesapların kullanıyor. \"Advanced\" (Gelişmiş) yazısına, sonra \"Go to (uygulama adın) (unsafe)\" yazısına tıkla.",
+    "ahead2Title": "İzin kutusu",
+    "ahead2": "Ardından Google, uygulamanın neler yapabileceğini listeler. Gmail izninin (e-posta okuma, yazma ve gönderme) yanındaki kutu boşsa işaretle. O kutu işaretli değilse multiple-gmail postalarını göremez.",
+    "continue": "JSON dosyası elimde"
+  },
+  "upload": {
+    "title": "Anahtar dosyasını yükle",
+    "lead": "Google Cloud'dan indirdiğin JSON dosyasını seç. Adı genelde client_secret ile başlar ve .json ile biter.",
+    "drop": "Dosyayı buraya sürükle",
+    "or": "ya da",
+    "choose": "Dosyayı seç",
+    "inputLabel": "Anahtar dosyası (client_secret JSON)",
+    "checking": "Dosya kontrol ediliyor...",
+    "ok": "Anahtar dosyası kaydedildi. multiple-gmail onu bu bilgisayarda şifreli olarak saklıyor.",
+    "already": "Kayıtlı bir anahtar dosyası zaten var. Yeni bir dosya yüklersen eskisinin yerine geçer.",
+    "webWarning": "Bu dosya \"Web application\" türünde bir istemciye ait. multiple-gmail'in \"Desktop app\" türünde bir istemciye ihtiyacı var. Google Cloud rehberinin 5. adımına dön ve \"Desktop app\" istemcisi oluştur.",
+    "secret": "Bu dosyada gizli bir bilgi var. Kimseyle paylaşma, kimseye gönderme.",
+    "next": "Sıradaki: bir Gmail hesabı bağla",
+    "err": {
+      "tooBig": "Bu dosya bir anahtar dosyası olamayacak kadar büyük. client_secret JSON dosyasını seç.",
+      "oneFile": "Sadece bir dosya bırak.",
+      "notJson": "Bu bir JSON dosyası değil. JSON dosyasını Google Cloud'dan yeniden indir (\"Clients\", sonra \"Download JSON\").",
+      "serviceAccount": "Bu bir hizmet hesabı (service account) anahtarı, ihtiyacımız olan dosya değil. Google Cloud'da \"Clients\" sayfasına git ve \"Desktop app\" türünde bir istemci oluştur.",
+      "notClient": "Bu JSON dosyası bir Google istemci dosyası değil. JSON dosyasını Google Cloud'dan, \"Clients\" sayfasındaki \"Desktop app\" istemcisinden indir.",
+      "missingId": "Dosyada istemci kimliği (client ID) yok. Dosyayı Google Cloud'dan yeniden indir.",
+      "missingSecret": "Dosyada istemci gizli anahtarı (client secret) yok. Google bunu sadece bir kez gösterir: istemciyi sil, yeni bir \"Desktop app\" istemcisi oluştur ve JSON dosyasını hemen indir."
+    }
+  },
+  "accounts": {
+    "title": "Gmail hesaplarını bağla",
+    "lead": "Her hesaba kısa bir takma ad ver. Yapay zekâyla konuşurken bunu kullanacaksın, örneğin: is hesabındaki en yeni postaları göster.",
+    "formTitle": "Hesap ekle",
+    "aliasLabel": "Takma ad",
+    "aliasHint": "Sadece küçük harf, rakam, - ve _ kullan. En fazla 32 karakter. Türkçe harfler (ç, ğ, ı, ö, ş, ü) olmaz. Örnekler: kisisel, is, magaza.",
+    "emailLabel": "Gmail adresi (isteğe bağlı)",
+    "emailHint": "Yazarsan Google giriş sayfasında bu hesabı senin için seçer.",
+    "connect": "Google ile bağlan",
+    "waiting": "Bir Google giriş sekmesi açıldı. Girişi orada bitir, sonra bu sekmeye geri dön. Bu sayfa kendiliğinden güncellenir.",
+    "popupBlocked": "Yeni sekme açılmadıysa bu bağlantıyı kullan:",
+    "openSignIn": "Google girişini aç",
+    "connected": "{alias} bağlandı ({email}).",
+    "gaveUp": "6 dakikadır Google'dan yanıt gelmedi, bu yüzden sayfa beklemeyi bıraktı. Tekrar denemek için \"Google ile bağlan\" düğmesine tıkla.",
+    "listTitle": "Bağlı hesaplar",
+    "empty": "Henüz hesap yok. İlk hesabını yukarıdan ekle.",
+    "more": "İstediğin kadar hesap ekleyebilirsin, her seferinde bir tane.",
+    "next": "Sıradaki: yapay zekânı bağla",
+    "aliasErr": {
+      "empty": "Bir takma ad yaz.",
+      "tooLong": "En fazla 32 karakter kullan.",
+      "invalid": "Sadece küçük harf (a-z), rakam, - ve _ kullan. Türkçe harf kullanma. Bir harf ya da rakamla başla.",
+      "reserved": "\"all\" ayrılmış bir addır. Başka bir takma ad seç.",
+      "taken": "Bu takma adı zaten kullanıyorsun."
+    },
+    "failed": {
+      "user_denied": "Giriş iptal edildi ya da izin verilmedi. Tekrar dene ve Google'ın izin ekranında Gmail kutusunu işaretle.",
+      "timeout": "Giriş çok uzun sürdü ve durduruldu. Tekrar denemek için \"Google ile bağlan\" düğmesine tıkla.",
+      "admin_blocked": "Google Workspace yöneticin bu uygulamayı engelledi. Yönetici sensen aşağıdaki adımları izle, sonra tekrar dene.",
+      "unknown": "Google girişi tamamlanmadı. Tekrar dene."
+    }
+  },
+  "workspace": {
+    "title": "Workspace hesabı mı? Önce bunu yap (isteğe bağlı)",
+    "lead": "Sadece kendi şirket alan adındaki (Google Workspace) adresler için ve sadece onun yöneticisiysen. Normal @gmail.com hesapları bu adımı atlar.",
+    "s1": "Google Yönetici Konsolu'nu (Admin console) aç ve yönetici olarak giriş yap.",
+    "s2": "\"Security\" (Güvenlik), sonra \"Access and data control\" (Erişim ve veri kontrolü), sonra \"API controls\" (API kontrolleri) bölümüne git.",
+    "s3": "\"Manage third-party app access\" (Üçüncü taraf uygulama erişimini yönet) yazısına tıkla.",
+    "s4": "\"Configure new app\" (Yeni uygulama yapılandır) de, istemci kimliğiyle (client ID) aramayı seç ve aşağıdaki istemci kimliğini yapıştır.",
+    "s5": "Uygulamayı seç, kimler için geçerli olacağını seç, erişimi \"Trusted\" (Güvenilir) yap ve \"Finish\" de.",
+    "s6": "Birkaç dakika bekle, sonra hesabı yeniden bağla.",
+    "clientIdLabel": "İstemci kimliğin (client ID)",
+    "noClient": "İstemci kimliğini burada görmek için önce anahtar dosyasını yükle.",
+    "openAdmin": "Google Yönetici Konsolu'nu aç"
+  },
+  "status": {
+    "connected": "Bağlı",
+    "needs_reauth": "Yeniden bağlanmalı",
+    "error": "Sorun var",
+    "pending": "Giriş bekleniyor",
+    "failed": "Bağlanmadı"
+  },
+  "ai": {
+    "title": "Yapay zekâ uygulamanı bağla",
+    "lead": "Kullandığın uygulamayı seç. Birden fazlasını bağlayabilirsin. Her uygulama bütün Gmail hesaplarını takma adlarıyla görür.",
+    "already": "Zaten eklenmiş.",
+    "changed": "Değişen dosya: {path}",
+    "unsupported": "Bu sadece Windows'ta çalışır.",
+    "claudeDesktop": {
+      "title": "Claude Desktop",
+      "desc": "Bilgisayarındaki Claude uygulaması. Tek tıkla multiple-gmail'i ona ekler. Önce ayarlarının yedeği alınır.",
+      "button": "Claude Desktop'a ekle",
+      "done": "Claude Desktop'a eklendi.",
+      "noticeTitle": "Bir adım daha: Claude Desktop'ı yeniden başlat",
+      "notice": "Şimdi Claude Desktop'ı tamamen kapat: saatin yanındaki Claude simgesine (sistem tepsisi) sağ tıkla ve \"Quit\" (Çık) seç. Sonra Claude Desktop'ı yeniden aç."
+    },
+    "claudeCode": {
+      "title": "Claude Code",
+      "desc": "Terminalde çalışan Claude. Bu komutu bir terminal penceresinde (Komut İstemi ya da PowerShell) bir kez çalıştır.",
+      "commandLabel": "Komut",
+      "run": "Benim yerime çalıştır",
+      "runOk": "Tamam. Claude Code artık multiple-gmail'i tanıyor. Kullanmak için Claude Code'u yeniden başlat.",
+      "runFail": "Komut çalışmadı (çıkış kodu {code}). Nedenini görmek için komutu kopyalayıp bir terminalde çalıştır.",
+      "notFound": "Bu bilgisayarda Claude Code bulunamadı. Daha sonra kurarsan yukarıdaki komutu kopyala."
+    },
+    "gemini": {
+      "title": "Gemini CLI",
+      "desc": "Terminalde çalışan Gemini. Gemini'yi postalarınla kullanmanın yolu da budur. Tek tıkla multiple-gmail'i ayarlarına ekler. Önce yedek alınır.",
+      "button": "Gemini CLI'ya ekle",
+      "done": "Gemini CLI'ya eklendi. Kullanmak için Gemini CLI'yı kapatıp yeniden aç."
+    },
+    "http": {
+      "title": "Diğer uygulamalar: Cursor, VS Code, LM Studio ve diğerleri",
+      "desc": "Bu uygulamalar gizli bir anahtarla yerel bir web adresine bağlanır. Çalışmaları için multiple-gmail penceresinin açık olması gerekir.",
+      "urlLabel": "Adres",
+      "keyLabel": "Gizli anahtar",
+      "showKey": "Anahtarı örneklerde göster",
+      "hideKey": "Anahtarı gizle",
+      "keyHidden": "Göster düğmesine basana kadar örneklerde <YOUR_API_KEY> yazar. Kopyala düğmeleri her zaman gerçek anahtarı kopyalar.",
+      "keyWarn": "Bu anahtarı kimseyle paylaşma. Anahtara sahip olan biri bu bilgisayar üzerinden Gmail'ini kullanabilir.",
+      "cursor": "Cursor (mcp.json)",
+      "vscode": "VS Code (mcp.json)",
+      "generic": "Başka bir uygulama",
+      "tip": "İpucu: kontrol panelinde \"Windows ile başlat\" ayarını aç; böylece bu uygulamalar multiple-gmail'i her zaman bulur."
+    },
+    "web": {
+      "title": "Tarayıcıdaki ChatGPT ve claude.ai",
+      "desc": "Web siteleri bilgisayarındaki bir programa ulaşamaz. Onlarla kullanmak için multiple-gmail'in bir sunucuda, sunucu modunda çalışması gerekir. Projedeki DEPLOY.md dosyası nasıl yapılacağını anlatır."
+    },
+    "next": "Kontrol paneline git"
+  },
+  "dashboard": {
+    "title": "Kontrol paneli",
+    "lead": "Kurulum tamam. Buraya dönmek için multiple-gmail'i istediğin zaman açabilirsin.",
+    "accounts": "Hesaplar",
+    "colAlias": "Takma ad",
+    "colEmail": "E-posta",
+    "colStatus": "Durum",
+    "colActions": "İşlemler",
+    "reconnect": "Yeniden bağla",
+    "remove": "Kaldır",
+    "add": "Hesap ekle",
+    "reconnectHint": "\"Yeniden bağlanmalı\" yazan bir hesap çalışmayı bıraktı; genelde Google girişinin süresi dolduğu için. \"Yeniden bağla\" düğmesine tıkla ve tekrar giriş yap.",
+    "apikey": "Diğer uygulamalar için gizli anahtar",
+    "apikeyDesc": "Cursor, VS Code ve yerel adrese bağlanan diğer uygulamalar bunu kullanır.",
+    "copyKey": "Anahtarı kopyala",
+    "rotate": "Yeni anahtar oluştur",
+    "rotateTitle": "Yeni anahtar oluşturulsun mu?",
+    "rotateBody": "Eski anahtar hemen çalışmaz olur. Onu kullanan uygulamalar (Cursor ya da VS Code gibi) yeni anahtara ihtiyaç duyar.",
+    "rotated": "Yeni anahtar oluşturuldu. Diğer uygulamalarına yapıştır.",
+    "autostart": "Windows ile başlat",
+    "autostartDesc": "Windows'a giriş yaptığında multiple-gmail'i sessizce başlatır; böylece Cursor gibi uygulamalar ona her zaman ulaşır. Claude Desktop ve Gemini CLI'nın buna ihtiyacı yoktur.",
+    "autostartOn": "Windows ile başlat açık.",
+    "autostartOff": "Windows ile başlat kapalı.",
+    "language": "Dil",
+    "ai": "Yapay zekâ uygulamanı bağla",
+    "aiDesc": "multiple-gmail'i Claude'a, Gemini CLI'ya ya da diğer uygulamalara ekle."
+  },
+  "remove": {
+    "title": "{alias} kaldırılsın mı?",
+    "body": "multiple-gmail bu hesaptan çıkış yapar ve onu unutur. Gmail'deki postaların olduğu gibi kalır.",
+    "typeLabel": "Onaylamak için {alias} yaz",
+    "confirm": "Hesabı kaldır",
+    "done": "{alias} kaldırıldı.",
+    "notRevoked": "{alias} bu bilgisayardan kaldırıldı ama Google'a haber verilemedi. Erişimi myaccount.google.com/permissions adresinden de kaldırabilirsin."
+  }
+}

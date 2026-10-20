@@ -3,9 +3,32 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>multiple-gmail</title>
+<link rel="icon" href="/img/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+<script type="module" src="/app.js"></script>
 </head>
 <body>
-<p>Setup UI coming soon</p>
+<a class="skip" id="skip" href="#main">Skip to content</a>
+<div class="airmail" aria-hidden="true"></div>
+<header class="topbar">
+  <div class="brand">
+    <img src="/img/icon.svg" alt="" width="32" height="32">
+    <div>
+      <p class="brand-name">multiple-gmail</p>
+      <p class="brand-tag" id="tagline"></p>
+    </div>
+  </div>
+  <div class="lang" id="lang-switch"></div>
+</header>
+<div class="shell">
+  <nav class="rail" id="rail"></nav>
+  <main id="main" tabindex="-1">
+    <p class="loading">Loading...</p>
+  </main>
+</div>
+<div class="sr-only" id="announce" aria-live="polite" aria-atomic="true"></div>
+<dialog id="dialog" class="dialog"></dialog>
 </body>
 </html>

@@ -243,6 +243,22 @@ describe('local http server', () => {
     expect((await loadClient())?.clientId).toBe('id-1');
   });
 
+  it('GET /api/state exposes the non-secret client ID, never the client secret', async () => {
+    const s = await start();
+    const cookie = await session(s);
+    const before = JSON.parse((await api(s, cookie, 'GET', '/api/state')).body);
+    expect(before.clientId).toBeNull();
+    await api(s, cookie, 'POST', '/api/client', {
+      installed: { client_id: 'id-1.apps.googleusercontent.com', client_secret: 'sec-1', redirect_uris: ['http://localhost'] },
+    });
+    const r = await api(s, cookie, 'GET', '/api/state');
+    const body = JSON.parse(r.body);
+    expect(body.hasClient).toBe(true);
+    expect(body.clientId).toBe('id-1.apps.googleusercontent.com');
+    expect(body.clientKind).toBe('installed');
+    expect(r.body).not.toContain('sec-1');
+  });
+
   it('rejects bodies over 1 MB with 413', async () => {
     const s = await start();
     const cookie = await session(s);

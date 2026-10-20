@@ -1,0 +1,274 @@
+{
+  "app": {
+    "name": "multiple-gmail",
+    "tagline": "All your Gmail accounts, in your AI apps.",
+    "skip": "Skip to content",
+    "loading": "Loading..."
+  },
+  "lang": {
+    "label": "Language",
+    "en": "English",
+    "tr": "Türkçe"
+  },
+  "nav": {
+    "label": "Setup steps",
+    "welcome": "Welcome",
+    "google": "Google Cloud",
+    "upload": "Key file",
+    "accounts": "Gmail accounts",
+    "ai": "Connect your AI",
+    "dashboard": "Control panel",
+    "locked": "Finish the earlier steps first",
+    "done": "done",
+    "current": "current step",
+    "stepOf": "Step {n} of {total}"
+  },
+  "common": {
+    "next": "Continue",
+    "back": "Back",
+    "copy": "Copy",
+    "copied": "Copied.",
+    "copyFailed": "Could not copy. Select the text and press Ctrl+C.",
+    "cancel": "Cancel",
+    "working": "Working...",
+    "newTab": "opens in a new tab",
+    "mayDiffer": "Google changes its website from time to time, so a button or menu may have a slightly different name. Look for the closest match.",
+    "mayDifferShort": "Google changes its website from time to time, so a menu may have a slightly different name. Look for the closest match."
+  },
+  "errors": {
+    "session": "This page is no longer signed in. Close this tab and open multiple-gmail again to get a fresh page.",
+    "network": "multiple-gmail is not responding. Check that its window is still open, then try again.",
+    "server": "multiple-gmail reported a problem: {message}"
+  },
+  "welcome": {
+    "title": "Let's connect your Gmail accounts",
+    "lead": "This setup takes about 15 minutes and you do it only once. After that, AI apps like Claude can read, sort and draft mail in every Gmail account you connect.",
+    "planTitle": "What you will do",
+    "plan1": "Create a free Google Cloud project. It gives you your own private key to Gmail.",
+    "plan2": "Upload that key file to this page.",
+    "plan3": "Sign in to each Gmail account you want to use, and give it a short nickname.",
+    "plan4": "Add multiple-gmail to your AI app.",
+    "privacy": "Your sign-ins are stored encrypted on this computer only. multiple-gmail has no server of its own and nobody else sees your mail.",
+    "keepOpen": "Keep the multiple-gmail window (the black window that opened with this page) open while you work here. Closing it stops this page.",
+    "langPrompt": "Choose your language",
+    "start": "Start setup"
+  },
+  "google": {
+    "title": "Set up Google Cloud",
+    "lead": "Google needs to know that multiple-gmail may use Gmail for you. You tell it in Google Cloud, Google's website for app settings. It is free: you do not need billing or a credit card.",
+    "progress": "{done} of {total} steps done",
+    "markDone": "I did this step",
+    "open": "Open this page in Google Cloud",
+    "whyLabel": "Why:",
+    "s1": {
+      "title": "Create a project",
+      "why": "A project is a folder in Google Cloud that keeps your settings together.",
+      "do1": "Sign in with any Google account. Your personal Gmail is fine.",
+      "do2": "Type a project name, for example multiple-gmail, and click Create.",
+      "do3": "Wait a few seconds. Check that the new project is selected in the project picker at the top of the page."
+    },
+    "s2": {
+      "title": "Turn on the Gmail API",
+      "why": "The Gmail API is the door that lets a program like multiple-gmail work with Gmail.",
+      "do1": "Check that your new project is selected at the top of the page.",
+      "do2": "Click Enable."
+    },
+    "s3": {
+      "title": "Describe your app",
+      "why": "Google shows this on its sign-in screen. Only you will see it.",
+      "do1": "Open Google Auth Platform and click Get started.",
+      "do2": "App information: type an app name, for example My Gmail helper, and choose your email as the user support email. Click Next.",
+      "do3": "Audience: choose External. Click Next.",
+      "do4": "Contact information: type your email. Click Next.",
+      "do5": "Tick the box to agree to the Google API Services User Data Policy, then click Continue and Create."
+    },
+    "s4": {
+      "title": "Allow Gmail access",
+      "why": "A scope is a permission. This one lets multiple-gmail read, label, draft and send mail. It cannot delete mail for good.",
+      "do1": "Open Data access and click Add or remove scopes.",
+      "do2": "At the bottom of the panel, find Manually add scopes. Paste the address below and click Add to table.",
+      "do3": "Click Update, then click Save at the bottom of the page.",
+      "scopeLabel": "Scope address"
+    },
+    "s5": {
+      "title": "Create the key file",
+      "why": "The client is your app's ID card. Google gives it to you as a small file with a name like client_secret_123.json.",
+      "do1": "Open Clients and click Create client.",
+      "do2": "Application type: choose Desktop app. Name: anything, for example multiple-gmail desktop. Click Create.",
+      "do3": "In the window that opens, click Download JSON and save the file where you can find it, for example in Downloads.",
+      "note": "Download it right away. Google may show the secret part only once. If you missed it, delete the client and create a new one."
+    },
+    "s6": {
+      "title": "Publish the app",
+      "why": "New apps start in Testing mode. In Testing mode Google signs you out every 7 days and you would have to reconnect every account each week. Publishing stops that.",
+      "do1": "Open Audience. Under Publishing status, click Publish app, then Confirm.",
+      "do2": "The status should now say In production.",
+      "do3": "Google may say your app needs verification. You can ignore that: verification is for apps that other people use."
+    },
+    "aheadTitle": "Two screens you will see when you sign in later",
+    "ahead1Title": "\"Google hasn't verified this app\"",
+    "ahead1": "This is expected. The app is yours: you made it a few minutes ago and only your own accounts use it. Click Advanced, then click Go to (your app name) (unsafe).",
+    "ahead2Title": "The permission checkbox",
+    "ahead2": "Next, Google lists what the app may do. If the box next to the Gmail permission (read, compose and send email) is empty, tick it. Without it multiple-gmail cannot see your mail.",
+    "continue": "I have the JSON file"
+  },
+  "upload": {
+    "title": "Upload the key file",
+    "lead": "Choose the JSON file you downloaded from Google Cloud. Its name usually starts with client_secret and ends with .json.",
+    "drop": "Drag the file here",
+    "or": "or",
+    "choose": "Choose the file",
+    "inputLabel": "Key file (client_secret JSON)",
+    "checking": "Checking the file...",
+    "ok": "Key file saved. multiple-gmail keeps it encrypted on this computer.",
+    "already": "A key file is already saved. Uploading a new one replaces it.",
+    "webWarning": "This file belongs to a Web application client. multiple-gmail needs a Desktop app client. Go back to the Google Cloud guide, step 5, and create a Desktop app client.",
+    "secret": "This file contains a secret. Do not share it or send it to anyone.",
+    "next": "Next: connect a Gmail account",
+    "err": {
+      "tooBig": "This file is too big to be a key file. Choose the client_secret JSON file.",
+      "oneFile": "Drop only one file.",
+      "notJson": "This is not a JSON file. Download the client JSON again from Google Cloud (Clients, then Download JSON).",
+      "serviceAccount": "This is a service account key, not the file we need. In Google Cloud go to Clients and create a client of type Desktop app.",
+      "notClient": "This JSON file is not a Google client file. Download the JSON from Google Cloud, Clients, Desktop app.",
+      "missingId": "The file is missing the client ID. Download it again from Google Cloud.",
+      "missingSecret": "The file is missing the client secret. Google shows the secret only once: delete the client, create a new Desktop app client and download its JSON right away."
+    }
+  },
+  "accounts": {
+    "title": "Connect your Gmail accounts",
+    "lead": "Give each account a short nickname. You will use it with your AI, for example: show me the newest mail in work.",
+    "formTitle": "Add an account",
+    "aliasLabel": "Nickname",
+    "aliasHint": "Small letters, numbers, - and _ only. Up to 32 characters. Examples: personal, work, shop.",
+    "emailLabel": "Gmail address (optional)",
+    "emailHint": "If you type it, Google picks this account for you on the sign-in page.",
+    "connect": "Connect with Google",
+    "waiting": "A Google sign-in tab opened. Finish signing in there, then come back to this tab. This page updates by itself.",
+    "popupBlocked": "If no new tab opened, use this link:",
+    "openSignIn": "Open Google sign-in",
+    "connected": "Connected {alias} ({email}).",
+    "gaveUp": "No answer from Google after 6 minutes, so this page stopped waiting. Click Connect with Google to try again.",
+    "listTitle": "Connected accounts",
+    "empty": "No accounts yet. Add your first one above.",
+    "more": "You can add as many accounts as you like, one at a time.",
+    "next": "Next: connect your AI",
+    "aliasErr": {
+      "empty": "Type a nickname.",
+      "tooLong": "Use at most 32 characters.",
+      "invalid": "Use only small letters (a to z), numbers, - and _. Start with a letter or a number.",
+      "reserved": "\"all\" is reserved. Choose another nickname.",
+      "taken": "You already use this nickname."
+    },
+    "failed": {
+      "user_denied": "Sign-in was cancelled or permission was not given. Try again, and on Google's permission screen tick the Gmail box.",
+      "timeout": "Sign-in took too long and was stopped. Click Connect with Google to try again.",
+      "admin_blocked": "Your Google Workspace administrator blocked this app. If you are the admin, follow the steps below, then try again.",
+      "unknown": "Google sign-in did not finish. Try again."
+    }
+  },
+  "workspace": {
+    "title": "Workspace account? Do this first (optional)",
+    "lead": "Only for addresses on your own company domain (Google Workspace), and only if you are its admin. Normal @gmail.com accounts skip this.",
+    "s1": "Open the Google Admin console and sign in as the admin.",
+    "s2": "Go to Security, then Access and data control, then API controls.",
+    "s3": "Click Manage third-party app access.",
+    "s4": "Click Configure new app, choose to search by client ID, and paste your client ID.",
+    "s5": "Select the app, choose who it applies to, set access to Trusted, and click Finish.",
+    "s6": "Wait a few minutes, then connect the account again.",
+    "clientIdLabel": "Your client ID",
+    "noClient": "Upload the key file first to see your client ID here.",
+    "openAdmin": "Open the Google Admin console"
+  },
+  "status": {
+    "connected": "Connected",
+    "needs_reauth": "Needs reconnect",
+    "error": "Problem",
+    "pending": "Waiting for sign-in",
+    "failed": "Not connected"
+  },
+  "ai": {
+    "title": "Connect your AI app",
+    "lead": "Pick the app you use. You can connect more than one. Each app then sees all your Gmail accounts by their nicknames.",
+    "already": "Already added.",
+    "changed": "Changed file: {path}",
+    "unsupported": "This works only on Windows.",
+    "claudeDesktop": {
+      "title": "Claude Desktop",
+      "desc": "The Claude app for your computer. One click adds multiple-gmail to it. A backup of its settings is made first.",
+      "button": "Add to Claude Desktop",
+      "done": "Added to Claude Desktop.",
+      "noticeTitle": "One more step: restart Claude Desktop",
+      "notice": "Now fully quit Claude Desktop: right-click the Claude icon near the clock (system tray) and choose Quit. Then open Claude Desktop again."
+    },
+    "claudeCode": {
+      "title": "Claude Code",
+      "desc": "Claude in the terminal. Run this command once in a terminal window (Command Prompt or PowerShell).",
+      "commandLabel": "Command",
+      "run": "Run it for me",
+      "runOk": "Done. Claude Code now knows multiple-gmail. Restart Claude Code to use it.",
+      "runFail": "The command did not work (exit code {code}). Copy it and run it in a terminal to see why.",
+      "notFound": "Claude Code was not found on this computer. If you install it later, copy the command above."
+    },
+    "gemini": {
+      "title": "Gemini CLI",
+      "desc": "Gemini in the terminal. This is also the way to use Gemini with your mail. One click adds multiple-gmail to its settings. A backup is made first.",
+      "button": "Add to Gemini CLI",
+      "done": "Added to Gemini CLI. Close and reopen Gemini CLI to use it."
+    },
+    "http": {
+      "title": "Other apps: Cursor, VS Code, LM Studio and more",
+      "desc": "These apps connect to a local web address with a secret key. The multiple-gmail window must be open for them to work.",
+      "urlLabel": "Address",
+      "keyLabel": "Secret key",
+      "showKey": "Show the key in the examples",
+      "hideKey": "Hide the key",
+      "keyHidden": "The examples show <YOUR_API_KEY> until you click Show. Copy buttons always copy the real key.",
+      "keyWarn": "Keep this key private. Anyone who has it can use your Gmail through this computer.",
+      "cursor": "Cursor (mcp.json)",
+      "vscode": "VS Code (mcp.json)",
+      "generic": "Any other app",
+      "tip": "Tip: turn on Start with Windows in the control panel, so these apps always find multiple-gmail."
+    },
+    "web": {
+      "title": "ChatGPT and claude.ai in the browser",
+      "desc": "Websites cannot reach a program on your computer. To use them, multiple-gmail has to run on a server in server mode. The file DEPLOY.md in the project explains how."
+    },
+    "next": "Go to the control panel"
+  },
+  "dashboard": {
+    "title": "Control panel",
+    "lead": "Setup is done. Open multiple-gmail any time to come back here.",
+    "accounts": "Accounts",
+    "colAlias": "Nickname",
+    "colEmail": "Email",
+    "colStatus": "Status",
+    "colActions": "Actions",
+    "reconnect": "Reconnect",
+    "remove": "Remove",
+    "add": "Add an account",
+    "reconnectHint": "An account that needs reconnect stopped working, usually because its Google sign-in expired. Click Reconnect and sign in again.",
+    "apikey": "Secret key for other apps",
+    "apikeyDesc": "Used by Cursor, VS Code and other apps that connect to the local address.",
+    "copyKey": "Copy key",
+    "rotate": "Make a new key",
+    "rotateTitle": "Make a new key?",
+    "rotateBody": "The old key stops working right away. Apps that use it, like Cursor or VS Code, need the new key.",
+    "rotated": "New key made. Paste it into your other apps.",
+    "autostart": "Start with Windows",
+    "autostartDesc": "Starts multiple-gmail quietly when you sign in to Windows, so apps like Cursor can always reach it. Claude Desktop and Gemini CLI do not need this.",
+    "autostartOn": "Start with Windows is on.",
+    "autostartOff": "Start with Windows is off.",
+    "language": "Language",
+    "ai": "Connect your AI app",
+    "aiDesc": "Add multiple-gmail to Claude, Gemini CLI or other apps."
+  },
+  "remove": {
+    "title": "Remove {alias}?",
+    "body": "multiple-gmail signs out of this account and forgets it. Your mail in Gmail stays as it is.",
+    "typeLabel": "Type {alias} to confirm",
+    "confirm": "Remove account",
+    "done": "{alias} removed.",
+    "notRevoked": "{alias} was removed from this computer, but Google could not be told. You can also remove access at myaccount.google.com/permissions."
+  }
+}

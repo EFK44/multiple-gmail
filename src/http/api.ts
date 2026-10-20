@@ -133,6 +133,10 @@ export function createApi(partial: Partial<ApiDeps> = {}) {
     const key = await getLocalApiKey();
     return ok({
       hasClient: client !== null,
+      // The client ID is public (it appears in every sign-in URL); the wizard shows it for Workspace admin steps.
+      // The client secret is never sent to the UI.
+      clientId: client?.clientId ?? null,
+      clientKind: client?.kind ?? null,
       language: cfg.language,
       defaultAccount: cfg.defaultAccount,
       accounts: Object.entries(cfg.accounts).map(([alias, a]) => ({
