@@ -478,7 +478,7 @@ function welcomeScreen() {
     h('h2', {}, t('welcome.planTitle')),
     h('ol', { class: 'plan' }, ['plan1', 'plan2', 'plan3', 'plan4'].map((k) => h('li', {}, t(`welcome.${k}`)))),
     h('p', { class: 'note note-quiet' }, t('welcome.privacy')),
-    h('p', { class: 'note' }, t('welcome.keepOpen')),
+    h('p', { class: 'note' }, tOs('welcome.keepOpen')),
     h('div', { class: 'actions' }, h('button', { type: 'button', class: 'btn btn-primary', id: 'start', onclick: () => go('google') }, t('welcome.start'))),
   );
 }

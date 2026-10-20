@@ -51,6 +51,8 @@
     "plan4": "multiple-gmail'i yapay zekâ uygulamana ekleyeceksin.",
     "privacy": "Girişlerin sadece bu bilgisayarda, şifrelenmiş olarak saklanır. multiple-gmail'in kendi sunucusu yoktur ve postalarını başka kimse görmez.",
     "keepOpen": "Burada çalışırken multiple-gmail penceresini (bu sayfayla birlikte açılan siyah pencere) açık tut. Kapatırsan bu sayfa da çalışmaz.",
+    "keepOpen_mac": "Burada çalışırken bu sayfayla birlikte açılan Terminal penceresini açık tut. Kapatırsan bu sayfa da çalışmaz.",
+    "keepOpen_linux": "Burada çalışırken multiple-gmail'in çalıştığı terminal penceresini açık tut. Kapatırsan bu sayfa da çalışmaz.",
     "langPrompt": "Dilini seç",
     "start": "Kuruluma başla"
   },

@@ -51,6 +51,8 @@
     "plan4": "Add multiple-gmail to your AI app.",
     "privacy": "Your sign-ins are stored encrypted on this computer only. multiple-gmail has no server of its own and nobody else sees your mail.",
     "keepOpen": "Keep the multiple-gmail window (the black window that opened with this page) open while you work here. Closing it stops this page.",
+    "keepOpen_mac": "Keep the Terminal window that opened with this page open while you work here. Closing it stops this page.",
+    "keepOpen_linux": "Keep the terminal window where multiple-gmail is running open while you work here. Closing it stops this page.",
     "langPrompt": "Choose your language",
     "start": "Start setup"
   },
