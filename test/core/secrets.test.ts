@@ -16,17 +16,23 @@ import {
 } from '../../src/core/secrets.js';
 
 let root: string;
+let setMasterKey = false;
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'mg-secrets-'));
   process.env.MULTIPLE_GMAIL_HOME = join(root, 'home');
   if (process.platform !== 'win32') {
     process.env.MULTIPLE_GMAIL_MASTER_KEY = randomBytes(32).toString('base64');
+    setMasterKey = true;
   }
   resetMasterKeyCacheForTests();
 });
 afterEach(async () => {
   resetMasterKeyCacheForTests();
   delete process.env.MULTIPLE_GMAIL_HOME;
+  if (setMasterKey) {
+    delete process.env.MULTIPLE_GMAIL_MASTER_KEY;
+    setMasterKey = false;
+  }
   await rm(root, { recursive: true, force: true });
 });
 
@@ -80,7 +86,7 @@ describe('secret store', () => {
   it('rejects path traversal aliases', async () => {
     const t = { refreshToken: 'r', scope: 's' };
     await expect(saveToken('../evil', t)).rejects.toThrow(/Invalid account alias/);
-    await expect(loadToken('..\evil')).rejects.toThrow(/Invalid account alias/);
+    await expect(loadToken('..\\evil')).rejects.toThrow(/Invalid account alias/);
     await expect(deleteToken('a/b')).rejects.toThrow(/Invalid account alias/);
   });
 
@@ -91,5 +97,11 @@ describe('secret store', () => {
     const k2 = await rotateLocalApiKey();
     expect(k2).not.toBe(k1);
     expect(await getLocalApiKey()).toBe(k2);
+  });
+
+  it('local api key first creation is race-safe', async () => {
+    const keys = await Promise.all(Array.from({ length: 5 }, () => getLocalApiKey()));
+    expect(new Set(keys).size).toBe(1);
+    expect(await getLocalApiKey()).toBe(keys[0]);
   });
 });

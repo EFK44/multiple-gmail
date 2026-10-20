@@ -3,7 +3,7 @@ import { readFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { validateAlias } from './config.js';
 import { open, seal } from './crypto.js';
-import { writeFileAtomic } from './fsx.js';
+import { writeFileAtomic, type WriteAtomicOptions } from './fsx.js';
 import { getMasterKey } from './masterKey.js';
 import { dataDir, tokenPath } from './paths.js';
 import { ensureSecureDir } from './secureDir.js';
@@ -53,10 +53,10 @@ export function parseClientJson(text: string): OAuthClient {
   return { clientId, clientSecret, kind, redirectUris };
 }
 
-async function writeSealed(file: string, value: Buffer): Promise<void> {
+async function writeSealed(file: string, value: Buffer, opts: WriteAtomicOptions = {}): Promise<void> {
   await ensureSecureDir(dataDir());
   await ensureSecureDir(dirname(file));
-  await writeFileAtomic(file, seal(await getMasterKey(), value));
+  await writeFileAtomic(file, seal(await getMasterKey(), value), opts);
 }
 
 async function readSealed(file: string): Promise<Buffer | null> {
@@ -101,7 +101,17 @@ export async function deleteToken(alias: string): Promise<void> {
 export async function getLocalApiKey(): Promise<string> {
   const existing = await readSealed(apiKeyFile());
   if (existing) return existing.toString('utf8');
-  return rotateLocalApiKey();
+  const key = randomBytes(32).toString('base64url');
+  try {
+    await writeSealed(apiKeyFile(), Buffer.from(key, 'utf8'), { exclusive: true });
+    return key;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+  }
+  // Another caller or process created the key first: use theirs.
+  const winner = await readSealed(apiKeyFile());
+  if (!winner) throw new Error(`Local API key file ${apiKeyFile()} disappeared during creation.`);
+  return winner.toString('utf8');
 }
 
 export async function rotateLocalApiKey(): Promise<string> {
