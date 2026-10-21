@@ -2,7 +2,7 @@
 
 All your Gmail accounts, in your AI apps.
 
-multiple-gmail is a small program for Windows, macOS and Linux that lets AI apps such as Claude, Gemini CLI, Cursor or VS Code work with
+multiple-gmail is a small program for Windows (macOS and Linux versions are in development) that lets AI apps such as Claude, Gemini CLI, Cursor or VS Code work with
 several Gmail accounts at once (personal Gmail and Google Workspace). It runs on your own computer, asks Google for
 access with your own Google Cloud project, and stores everything encrypted on your disk. Nothing goes to any server
 of mine.
@@ -52,20 +52,9 @@ The tools follow the same names and parameters as Claude's official Gmail connec
 
 ## Install
 
-Download the file for your system from [Releases](https://github.com/EFK44/multiple-gmail/releases). Each file is a
+Download `multiple-gmail-windows-x64.exe` from [Releases](https://github.com/EFK44/multiple-gmail/releases). It is a
 single program with everything inside; there is nothing else to install. `SHA256SUMS.txt` on the same page lets you
-check the download. Files appear there from the first tagged version on; until then, build from source (below).
-
-| System | File |
-|---|---|
-| Windows (x64) | `multiple-gmail-windows-x64.exe` |
-| macOS, Apple Silicon (M1 and later) | `multiple-gmail-macos-arm64` |
-| macOS, Intel | `multiple-gmail-macos-x64` |
-| Linux (x64) | `multiple-gmail-linux-x64` |
-
-The Windows build is the one I use every day. The macOS and Linux builds are built and unit-tested by CI; they are
-not hand-tested on macOS or Linux yet. Please
-[open an issue](https://github.com/EFK44/multiple-gmail/issues) if something does not work.
+check the download.
 
 Starting the program a second time does not start another server: it opens the wizard of the running one.
 
@@ -78,32 +67,10 @@ Starting the program a second time does not start another server: it opens the w
 
 A console window shows its status. Closing that window stops the server.
 
-### macOS
+### macOS and Linux
 
-1. Download `multiple-gmail-macos-arm64` (Apple Silicon) or `multiple-gmail-macos-x64` (Intel). Move it to a folder
-   of your choice, for example `~/Applications`, and rename it to `multiple-gmail` if you like.
-2. Make it executable in Terminal: `chmod +x ~/Applications/multiple-gmail`
-3. The program is not notarized by Apple, so the first start is blocked by Gatekeeper. Either right-click it in Finder,
-   choose **Open**, then **Open** again; or remove the download mark once in Terminal:
-   `xattr -d com.apple.quarantine ~/Applications/multiple-gmail`
-4. Start it from Terminal (`~/Applications/multiple-gmail`). The wizard opens in your default browser.
-
-On first use the encryption key is stored in your login Keychain as `multiple-gmail-master-key`. If macOS asks
-whether `security` may use that Keychain item, choose **Always Allow**; choosing Deny stops multiple-gmail from
-reading your saved accounts (it never makes a new key in that case). If your login Keychain is locked, the first
-start can wait for a Keychain unlock prompt, which may be behind other windows: unlock the Keychain (Keychain Access,
-or log in again), or set `MULTIPLE_GMAIL_MASTER_KEY` to skip the Keychain entirely.
-
-### Linux
-
-1. Download `multiple-gmail-linux-x64`, put it for example in `~/.local/bin/multiple-gmail`.
-2. Make it executable: `chmod +x ~/.local/bin/multiple-gmail`
-3. Run it: `~/.local/bin/multiple-gmail`. The wizard opens in your default browser through `xdg-open`.
-
-Optional: install `secret-tool` (Debian and Ubuntu: `sudo apt install libsecret-tools`, Fedora: `libsecret`) before
-the first start, so the encryption key goes into your desktop keyring instead of a file. If `secret-tool` is
-installed but the keyring is locked or not running (for example over SSH), multiple-gmail stops with a message
-instead of making a second key. You can also set `MULTIPLE_GMAIL_MASTER_KEY` yourself (see DEPLOY.md, `gen-key`).
+In development. There is no download for macOS or Linux yet. If you want to try it early, build from source (below)
+and [open an issue](https://github.com/EFK44/multiple-gmail/issues) if something does not work.
 
 ### Updating
 
