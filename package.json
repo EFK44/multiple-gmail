@@ -1,6 +1,6 @@
 {
   "name": "multiple-gmail",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Multi-account Gmail MCP server",
   "scripts": {
     "build": "tsc --noEmit && node scripts/build-exe.mjs --bundle-only",

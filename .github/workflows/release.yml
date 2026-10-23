@@ -12,11 +12,15 @@ jobs:
     name: build (${{ matrix.asset }})
     strategy:
       fail-fast: true
-      # macOS and Linux are in development: CI still builds and tests them, releases ship Windows only.
+      # Linux is in development: CI still builds and tests it, releases ship Windows and macOS.
       matrix:
         include:
           - os: windows-latest
             asset: multiple-gmail-windows-x64.exe
+          - os: macos-15
+            asset: multiple-gmail-macos-arm64
+          - os: macos-15-intel
+            asset: multiple-gmail-macos-x64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
