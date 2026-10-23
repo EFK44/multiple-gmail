@@ -1,6 +1,7 @@
 import { realpathSync } from 'node:fs';
 import { isSea } from 'node:sea';
 import { pathToFileURL } from 'node:url';
+import { reopenInTerminal } from './core/macApp.js';
 import { runCli } from './modes/cli.js';
 import { runStdio } from './modes/stdio.js';
 
@@ -9,6 +10,7 @@ export async function main(argv: string[]): Promise<void> {
     runStdio();
     return;
   }
+  if (await reopenInTerminal(argv)) return;
   process.exitCode = await runCli(argv);
 }
 

@@ -114,3 +114,28 @@ describe.skipIf(!existsSync(EXE))('packaged exe', () => {
     }
   });
 });
+
+// macOS: the .app bundle built around the same executable.
+const APP = resolve('build', 'multiple-gmail.app');
+it.runIf(process.platform === 'darwin' && process.env.MG_REQUIRE_EXE === '1')('the .app bundle was built', () => {
+  expect(existsSync(APP), APP).toBe(true);
+});
+
+describe.skipIf(process.platform !== 'darwin' || !existsSync(APP))('macOS .app bundle', () => {
+  it('has a valid Info.plist that names the executable, the icon and VERSION', async () => {
+    const plist = join(APP, 'Contents', 'Info.plist');
+    await run('/usr/bin/plutil', ['-lint', plist]);
+    const read = async (key: string) => (await run('/usr/bin/plutil', ['-extract', key, 'raw', plist])).stdout.trim();
+    expect(await read('CFBundleExecutable')).toBe('multiple-gmail');
+    expect(await read('CFBundleIdentifier')).toBe('io.github.efk44.multiple-gmail');
+    expect(await read('CFBundleShortVersionString')).toBe(VERSION);
+    expect(await read('CFBundleIconFile')).toBe('icon.icns');
+    expect(existsSync(join(APP, 'Contents', 'Resources', 'icon.icns'))).toBe(true);
+  });
+
+  it('is signed as a whole and its executable runs', async () => {
+    await run('/usr/bin/codesign', ['--verify', '--strict', APP]);
+    const { stdout } = await run(join(APP, 'Contents', 'MacOS', 'multiple-gmail'), ['--version']);
+    expect(stdout.trim()).toBe(VERSION);
+  });
+});

@@ -32,6 +32,7 @@ export function systemBinary(name: string): string {
 const POSIX_CANDIDATES: Record<string, string[]> = {
   security: ['/usr/bin/security'],
   open: ['/usr/bin/open'],
+  xattr: ['/usr/bin/xattr'],
   'xdg-open': ['/usr/bin/xdg-open', '/bin/xdg-open'],
   'secret-tool': ['/usr/bin/secret-tool', '/bin/secret-tool'],
 };

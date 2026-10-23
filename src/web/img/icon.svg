@@ -1,6 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="multiple-gmail">
-  <rect x="7" y="4" width="22" height="16" rx="2" fill="#b8283a"/>
-  <rect x="5" y="8" width="22" height="16" rx="2" fill="#1d4fa3"/>
-  <rect x="3" y="12" width="22" height="16" rx="2" fill="#ffffff" stroke="#15243b" stroke-width="2"/>
-  <path d="M4 13.5l10 7.5 10-7.5" fill="none" stroke="#15243b" stroke-width="2" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="multiple-gmail">
+  <rect width="256" height="256" rx="56" fill="#f1f4f9"/>
+  <g transform="translate(30 76) scale(1.7)">
+    <rect width="100" height="76" rx="9" fill="#ffffff"/>
+    <path d="M0 14V67Q0 76 9 76H22V30Z" fill="#4285f4"/>
+    <path d="M100 14V67Q100 76 91 76H78V30Z" fill="#34a853"/>
+    <path d="M22 30L50 51L78 30V12L50 33L22 12Z" fill="#ea4335"/>
+    <path d="M0 14Q0 2 12 6L22 12V30Z" fill="#c5221f"/>
+    <path d="M100 14Q100 2 88 6L78 12V30Z" fill="#fbbc04"/>
+  </g>
+  <g stroke="#f1f4f9">
+    <circle cx="150" cy="50" r="22" fill="#e37400" stroke-width="7"/>
+    <circle cx="196" cy="76" r="31" fill="#1a73e8" stroke-width="8"/>
+    <circle cx="214" cy="134" r="23" fill="#188038" stroke-width="7"/>
+  </g>
+  <g fill="#ffffff">
+    <circle cx="150" cy="44" r="6.5"/><path d="M138 61Q150 49 162 61Z"/>
+    <circle cx="196" cy="67" r="9.5"/><path d="M179 92Q196 75 213 92Z"/>
+    <circle cx="214" cy="128" r="7"/><path d="M201 146Q214 133 227 146Z"/>
+  </g>
 </svg>

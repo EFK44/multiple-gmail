@@ -1,3 +1,5 @@
+<img src="assets/icon/icon.svg" alt="" width="96" height="96">
+
 # multiple-gmail
 
 All your Gmail accounts, in your AI apps.
@@ -59,8 +61,8 @@ check the download.
 | System | File |
 |---|---|
 | Windows (x64) | `multiple-gmail-windows-x64.exe` |
-| macOS, Apple Silicon (M1 and later) | `multiple-gmail-macos-arm64` |
-| macOS, Intel | `multiple-gmail-macos-x64` |
+| macOS, Apple Silicon (M1 and later) | `multiple-gmail-macos-arm64.zip` (the app) or `multiple-gmail-macos-arm64` (Terminal only) |
+| macOS, Intel | `multiple-gmail-macos-x64.zip` (the app) or `multiple-gmail-macos-x64` (Terminal only) |
 
 The Windows build is the one I use every day. The macOS builds are built and tested by CI; they are not hand-tested
 on a Mac yet. Please [open an issue](https://github.com/EFK44/multiple-gmail/issues) if something does not work.
@@ -78,13 +80,20 @@ A console window shows its status. Closing that window stops the server.
 
 ### macOS
 
-1. Download `multiple-gmail-macos-arm64` (Apple Silicon) or `multiple-gmail-macos-x64` (Intel). Move it to a folder
-   of your choice, for example `~/Applications`, and rename it to `multiple-gmail` if you like.
-2. Make it executable in Terminal: `chmod +x ~/Applications/multiple-gmail`
-3. The program is not notarized by Apple, so the first start is blocked by Gatekeeper. Either right-click it in Finder,
-   choose **Open**, then **Open** again; or remove the download mark once in Terminal:
-   `xattr -d com.apple.quarantine ~/Applications/multiple-gmail`
-4. Start it from Terminal (`~/Applications/multiple-gmail`). The wizard opens in your default browser.
+1. Download `multiple-gmail-macos-arm64.zip` (Apple Silicon: Apple menu > About This Mac shows "Apple M...") or
+   `multiple-gmail-macos-x64.zip` (Intel). Double-click the zip to unpack `multiple-gmail.app`.
+2. Drag `multiple-gmail.app` into your **Applications** folder *before* the first start. Claude Desktop, Claude Code and
+   Start at login remember where the app is, and a copy started from Downloads runs from a temporary place.
+3. Double-click it. The app is not notarized by Apple (that needs a paid Apple developer account), so macOS says it
+   cannot check the app. Click **Done** (or **OK**), open **System Settings > Privacy & Security**, scroll down to
+   "multiple-gmail.app was blocked" and click **Open Anyway**, then confirm with your password. This is needed once.
+   (On macOS 14 and earlier, right-clicking the app and choosing **Open** also works.)
+4. A Terminal window opens and shows the status, and the wizard opens in your default browser. Closing that Terminal
+   window stops the server, like the console window on Windows.
+
+Prefer Terminal? Download `multiple-gmail-macos-arm64` or `multiple-gmail-macos-x64` instead, put it for example in
+`~/Applications/multiple-gmail`, run `chmod +x ~/Applications/multiple-gmail` and
+`xattr -d com.apple.quarantine ~/Applications/multiple-gmail` once, then start it with `~/Applications/multiple-gmail`.
 
 On first use the encryption key is stored in your login Keychain as `multiple-gmail-master-key`. If macOS asks
 whether `security` may use that Keychain item, choose **Always Allow**; choosing Deny stops multiple-gmail from
@@ -105,7 +114,8 @@ and [open an issue](https://github.com/EFK44/multiple-gmail/issues) if something
 2. Replace the file with the new download at the same path and with the same file name (rename the download the way
    you renamed the first one). Claude Desktop, Claude Code, Gemini CLI and Start at login store that exact path; a
    new path or name means they start nothing. If you did move it, open the wizard from the new location and click
-   **Update** (or the add button) for each app.
+   **Update** (or the add button) for each app. On macOS, drag the new `multiple-gmail.app` into Applications and
+   choose **Replace**.
 3. Start multiple-gmail again, then Claude Desktop.
 
 The release notes list anything else that changed.
@@ -120,7 +130,8 @@ npm test
 npm run build:exe
 ```
 
-The result is `build/multiple-gmail.exe` on Windows and `build/multiple-gmail` on macOS and Linux. You built it
+The result is `build/multiple-gmail.exe` on Windows and `build/multiple-gmail` on macOS and Linux, plus
+`build/multiple-gmail.app` on macOS. You built it
 yourself, so the SmartScreen or Gatekeeper warnings above are expected.
 
 ## Google Cloud setup (once)
@@ -185,7 +196,8 @@ multiple-gmail accounts remove "Shop"
 On Windows the program is `multiple-gmail.exe`. Unless its folder is on your `PATH`, give the full path, for example:
 
 - Windows (PowerShell): `& "$env:USERPROFILE\Apps\multiple-gmail.exe" accounts list`
-- macOS: `~/Applications/multiple-gmail accounts list`
+- macOS: `/Applications/multiple-gmail.app/Contents/MacOS/multiple-gmail accounts list` (the app) or
+  `~/Applications/multiple-gmail accounts list`
 - Linux: `~/.local/bin/multiple-gmail accounts list`
 
 ## Connect your AI app
@@ -203,7 +215,7 @@ The last wizard step does most of this with a button. By hand:
   `multiple-gmail` entry under `mcpServers` whose command is the absolute path of the program and whose argument is
   `--stdio`, for example `{"command": "C:\\Users\\<you>\\Apps\\multiple-gmail.exe", "args": ["--stdio"]}` on Windows
   (backslashes doubled in JSON) or `{"command": "/home/<you>/.local/bin/multiple-gmail", "args": ["--stdio"]}` on Linux
-  (on macOS, for example `/Users/<you>/Applications/multiple-gmail`).
+  (on macOS, for example `/Applications/multiple-gmail.app/Contents/MacOS/multiple-gmail`).
 - **Other apps (Cursor, VS Code, LM Studio, and so on):** use the HTTP address `http://127.0.0.1:47110/mcp` and the
   header `Authorization: Bearer <your local key>`. The wizard shows ready-to-copy JSON with your key. The HTTP server
   runs while the exe is running.

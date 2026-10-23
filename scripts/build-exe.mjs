@@ -1,12 +1,15 @@
 // Builds build/main.cjs (esbuild bundle) and, unless --bundle-only, the single executable for this OS (Node SEA)
 // with every file under src/web embedded as an asset keyed "web/<path>":
-//   Windows build/multiple-gmail.exe, macOS and Linux build/multiple-gmail.
-// --asset-name=<name> (or MG_ASSET_NAME) also copies the result to build/release/<name> for a GitHub Release.
+//   Windows build/multiple-gmail.exe (with the app icon), macOS and Linux build/multiple-gmail,
+//   and on macOS also build/multiple-gmail.app.
+// --asset-name=<name> (or MG_ASSET_NAME) also copies the result to build/release/<name> for a GitHub Release
+// (on macOS plus build/release/<name>.zip with the .app).
 import { spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import * as ResEdit from 'resedit';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BUILD = join(ROOT, 'build');
@@ -33,6 +36,81 @@ function listFiles(dir) {
 }
 
 const toPosix = (p) => p.split(sep).join('/');
+
+const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
+const ICON_DIR = join(ROOT, 'assets', 'icon');
+
+// Windows: replace node's icon and version strings (Explorer, taskbar, Task Manager) with multiple-gmail's.
+// Runs before the injection, on the plain node.exe copy; ignoreCert drops node's signature, which breaks anyway.
+function setWindowsResources(file) {
+  const exe = ResEdit.NtExecutable.from(readFileSync(file), { ignoreCert: true });
+  const res = ResEdit.NtExecutableResource.from(exe);
+  const icons = ResEdit.Data.IconFile.from(readFileSync(join(ICON_DIR, 'icon.ico'))).icons.map((i) => i.data);
+  const groups = ResEdit.Resource.IconGroupEntry.fromEntries(res.entries);
+  if (groups.length === 0) throw new Error('node.exe has no icon group to replace');
+  for (const g of groups) ResEdit.Resource.IconGroupEntry.replaceIconsForResource(res.entries, g.id, g.lang, icons);
+  const [vi] = ResEdit.Resource.VersionInfo.fromEntries(res.entries);
+  if (!vi) throw new Error('node.exe has no version info to replace');
+  const [major, minor, patch] = VERSION.split('.').map(Number);
+  for (const lang of vi.getAllLanguagesForStringValues()) {
+    vi.setFileVersion(major, minor, patch, 0, lang.lang);
+    vi.setProductVersion(major, minor, patch, 0, lang.lang);
+    vi.setStringValues(lang, {
+      CompanyName: 'EFK44',
+      FileDescription: 'multiple-gmail',
+      InternalName: 'multiple-gmail',
+      LegalCopyright: 'MIT License',
+      OriginalFilename: 'multiple-gmail.exe',
+      ProductName: 'multiple-gmail',
+    });
+  }
+  vi.outputToResourceEntries(res.entries);
+  res.outputResource(exe);
+  writeFileSync(file, Buffer.from(exe.generate()));
+}
+
+// macOS: build/multiple-gmail.app around the signed executable. Double-clicked from Finder, the program reopens
+// itself in Terminal (src/core/macApp.ts). LSUIElement keeps that short first launch out of the Dock.
+function buildMacApp(exe) {
+  const app = join(BUILD, 'multiple-gmail.app');
+  rmSync(app, { recursive: true, force: true });
+  mkdirSync(join(app, 'Contents', 'MacOS'), { recursive: true });
+  mkdirSync(join(app, 'Contents', 'Resources'), { recursive: true });
+  const plist = {
+    CFBundleDevelopmentRegion: 'en',
+    CFBundleDisplayName: 'multiple-gmail',
+    CFBundleExecutable: 'multiple-gmail',
+    CFBundleIconFile: 'icon.icns',
+    CFBundleIdentifier: 'io.github.efk44.multiple-gmail',
+    CFBundleInfoDictionaryVersion: '6.0',
+    CFBundleName: 'multiple-gmail',
+    CFBundlePackageType: 'APPL',
+    CFBundleShortVersionString: VERSION,
+    CFBundleVersion: VERSION,
+    LSMinimumSystemVersion: '13.5',
+    LSUIElement: true,
+    NSHighResolutionCapable: true,
+  };
+  const value = (v) => (v === true ? '<true/>' : `<string>${v}</string>`);
+  const body = Object.entries(plist).map(([k, v]) => `\t<key>${k}</key>\n\t${value(v)}`).join('\n');
+  writeFileSync(
+    join(app, 'Contents', 'Info.plist'),
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n' +
+      `<plist version="1.0">\n<dict>\n${body}\n</dict>\n</plist>\n`,
+  );
+  writeFileSync(join(app, 'Contents', 'PkgInfo'), 'APPL????');
+  copyFileSync(join(ICON_DIR, 'icon.icns'), join(app, 'Contents', 'Resources', 'icon.icns'));
+  const inner = join(app, 'Contents', 'MacOS', 'multiple-gmail');
+  copyFileSync(exe, inner);
+  chmodSync(inner, 0o755);
+  run('/usr/bin/plutil', ['-lint', join(app, 'Contents', 'Info.plist')]);
+  // Ad-hoc signature of the whole bundle (seals Info.plist and the icon); no Apple identity.
+  run('/usr/bin/codesign', ['--force', '--sign', '-', app]);
+  run('/usr/bin/codesign', ['--verify', '--strict', '--verbose=2', app]);
+  console.log('built build/multiple-gmail.app');
+  return app;
+}
 
 mkdirSync(BUILD, { recursive: true });
 
@@ -75,6 +153,7 @@ if (!bundleOnly) {
     // Optional on Windows: strip node's Authenticode signature, which the injection invalidates anyway.
     const sign = spawnSync('signtool', ['remove', '/s', EXE], { cwd: ROOT, stdio: 'ignore' });
     if (sign.error || sign.status !== 0) console.log('signtool not available or failed; skipping signature removal');
+    setWindowsResources(EXE);
   } else if (PLATFORM === 'darwin') {
     // Required on macOS: the injection breaks node's signature, and arm64 refuses to run unsigned code.
     run('/usr/bin/codesign', ['--remove-signature', EXE]);
@@ -93,12 +172,19 @@ if (!bundleOnly) {
   if (PLATFORM === 'darwin') run('/usr/bin/codesign', ['--sign', '-', EXE]);
   const mb = (statSync(EXE).size / 1024 / 1024).toFixed(1);
   console.log(`built build/${EXE_NAME} (${mb} MB)`);
+  const app = PLATFORM === 'darwin' ? buildMacApp(EXE) : null;
   if (assetName) {
     const RELEASE = join(BUILD, 'release');
     mkdirSync(RELEASE, { recursive: true });
     copyFileSync(EXE, join(RELEASE, assetName));
     if (PLATFORM !== 'win32') chmodSync(join(RELEASE, assetName), 0o755);
     console.log(`copied to build/release/${assetName}`);
+    if (app) {
+      // ditto keeps the bundle's permissions and signature; Finder's Archive Utility unpacks it.
+      rmSync(join(RELEASE, `${assetName}.zip`), { force: true });
+      run('/usr/bin/ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', app, join(RELEASE, `${assetName}.zip`)]);
+      console.log(`zipped to build/release/${assetName}.zip`);
+    }
   }
 }
 console.log(`done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
