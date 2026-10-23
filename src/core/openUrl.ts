@@ -10,15 +10,16 @@ export type Opener = { file: string; args: string[]; cwd?: string };
 export function openerFor(platform: NodeJS.Platform, url: string, isExec: IsExecutable = isExecutableFile): Opener | null {
   if (!/^https?:\/\//i.test(url)) return null;
   if (platform === 'win32') {
-    // Absolute path, cwd in System32: never resolve explorer.exe from the exe's own folder.
-    return { file: systemBinary('explorer'), args: [url], cwd: system32Dir() };
+    // Not explorer.exe: on current Windows 11 builds it ignores the URL and opens the Documents folder.
+    // FileProtocolHandler hands the URL to the default browser. Absolute path, cwd in System32.
+    return { file: systemBinary('rundll32'), args: ['url.dll,FileProtocolHandler', url], cwd: system32Dir() };
   }
   const file = posixBinary(platform === 'darwin' ? 'open' : 'xdg-open', isExec);
   return file ? { file, args: [url], cwd: '/' } : null;
 }
 
 // Best effort browser launch. Resolves true once the opener process has started, false when it could not be started
-// (or the URL is refused); never rejects. The exit code is not checked: explorer.exe exits with 1 even on success.
+// (or the URL is refused); never rejects. The exit code is not checked (openers report it inconsistently).
 // The 10 s execFile timeout kills a hung opener so it cannot keep the process alive.
 export async function openUrl(url: string): Promise<boolean> {
   const o = openerFor(process.platform, url);

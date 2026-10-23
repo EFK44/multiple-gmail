@@ -25,7 +25,7 @@ describe('defaultDataDir per OS', () => {
 
 describe('system binaries', () => {
   it('Windows paths are Windows paths on every host', () => {
-    expect(systemBinary('explorer')).toMatch(/^[A-Za-z]:\\.*\\explorer\.exe$/i);
+    expect(systemBinary('rundll32')).toMatch(/^[A-Za-z]:\\.*\\System32\\rundll32\.exe$/i);
     expect(systemBinary('powershell')).toMatch(/\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe$/i);
   });
   it('POSIX binaries resolve to the first existing absolute candidate only', () => {

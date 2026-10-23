@@ -138,11 +138,11 @@ describe('expired or used setup link', () => {
 });
 
 describe('browser opener', () => {
-  it('uses explorer.exe by absolute path on Windows', () => {
+  it('uses rundll32 url.dll,FileProtocolHandler by absolute path on Windows', () => {
     const o = openerFor('win32', 'http://127.0.0.1:47110/?t=x');
     expect(o).not.toBeNull();
-    expect(o!.file).toMatch(/^[A-Za-z]:\\.*\\explorer\.exe$/i);
-    expect(o!.args).toEqual(['http://127.0.0.1:47110/?t=x']);
+    expect(o!.file).toMatch(/^[A-Za-z]:\\.*\\System32\\rundll32\.exe$/i);
+    expect(o!.args).toEqual(['url.dll,FileProtocolHandler', 'http://127.0.0.1:47110/?t=x']);
   });
   it('uses /usr/bin/open on macOS and the first existing xdg-open on Linux, by absolute path', () => {
     const all = () => true;

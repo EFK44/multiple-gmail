@@ -7,7 +7,7 @@ import { win32 } from 'node:path';
 const RELATIVE: Record<string, string[]> = {
   powershell: ['WindowsPowerShell', 'v1.0', 'powershell.exe'],
   icacls: ['icacls.exe'],
-  explorer: ['..', 'explorer.exe'],
+  rundll32: ['rundll32.exe'],
   where: ['where.exe'],
   cmd: ['cmd.exe'],
 };

@@ -101,7 +101,7 @@ describe('systemBinary', () => {
   it.skipIf(process.platform !== 'win32')('resolves absolute paths under SystemRoot', () => {
     const root = systemRoot();
     expect(isAbsolute(root)).toBe(true);
-    for (const name of ['powershell', 'icacls', 'explorer', 'where']) {
+    for (const name of ['powershell', 'icacls', 'rundll32', 'where']) {
       const p = systemBinary(name);
       expect(isAbsolute(p)).toBe(true);
       const rel = relative(root, p);
