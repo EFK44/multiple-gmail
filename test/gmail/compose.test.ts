@@ -1,6 +1,6 @@
 import type { gmail_v1 } from '@googleapis/gmail';
 import { describe, expect, it } from 'vitest';
-import { buildRaw, replyHeaders } from '../../src/gmail/compose.js';
+import { buildMime, buildRaw, replyHeaders } from '../../src/gmail/compose.js';
 import type { GmailApi } from '../../src/gmail/client.js';
 
 function decodeRaw(raw: string): string {
@@ -50,6 +50,25 @@ describe('buildRaw', () => {
     expect(mime).toMatch(/^References: <id0@example\.com> <id1@example\.com>/m);
     expect(mime).toContain('multipart/alternative');
     expect(mime).toContain('text/html');
+  });
+
+  it('adds attachments with a UTF-8 filename and the xlsx content type', async () => {
+    const mime = (
+      await buildMime({
+        from: 'you@example.com',
+        to: ['a@example.com'],
+        subject: 'Fiyatlar',
+        body: 'ekte',
+        attachments: [{ filename: 'Fiyat listesi şubat.xlsx', content: Buffer.from('PK-data') }],
+      })
+    ).toString('utf8');
+    expect(mime).toContain('multipart/mixed');
+    expect(mime).toContain('Content-Disposition: attachment');
+    expect(mime).toContain('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(mime).toContain(Buffer.from('PK-data').toString('base64'));
+    // RFC 2231 filename, possibly split into numbered parts.
+    const parts = [...mime.matchAll(/filename\*\d*\*?=(?:utf-8'')?([^;\r\n]+)/gi)].map((m) => m[1].trim());
+    expect(decodeURIComponent(parts.join(''))).toBe('Fiyat listesi şubat.xlsx');
   });
 
   it('cannot be header-injected through the subject', async () => {

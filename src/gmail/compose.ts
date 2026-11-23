@@ -1,4 +1,5 @@
 import MailComposer from 'nodemailer/lib/mail-composer';
+import type { LoadedAttachment } from './attachments.js';
 import type { GmailApi } from './client.js';
 import { parseAddressList } from './shape.js';
 
@@ -12,10 +13,11 @@ export type RawOptions = {
   htmlBody?: string;
   inReplyTo?: string;
   references?: string;
+  attachments?: LoadedAttachment[];
 };
 
-// Base64url MIME for Gmail's `raw` field. nodemailer encodes non-ASCII headers and neutralizes header injection.
-export async function buildRaw(o: RawOptions): Promise<string> {
+// The MIME message. nodemailer encodes non-ASCII headers and neutralizes header injection.
+export async function buildMime(o: RawOptions): Promise<Buffer> {
   const composer = new MailComposer({
     from: o.from,
     to: o.to?.length ? o.to : undefined,
@@ -26,12 +28,17 @@ export async function buildRaw(o: RawOptions): Promise<string> {
     html: o.htmlBody,
     inReplyTo: o.inReplyTo,
     references: o.references,
+    attachments: o.attachments?.map((a) => ({ filename: a.filename, content: a.content })),
   });
   const node = composer.compile();
   // Gmail reads recipients from the headers and strips Bcc itself, so the header must be kept.
   node.keepBcc = true;
-  const buf = await node.build();
-  return buf.toString('base64url');
+  return node.build();
+}
+
+// Base64url MIME for Gmail's `raw` field.
+export async function buildRaw(o: RawOptions): Promise<string> {
+  return (await buildMime(o)).toString('base64url');
 }
 
 export type ReplyHeaders = {
