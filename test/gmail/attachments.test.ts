@@ -68,6 +68,20 @@ describe('loadAttachments', () => {
     await expect(loadAttachments([{ path: t }], opts())).rejects.toThrow(/not allowed/);
   });
 
+  it('rejects credential files and browser profiles', async () => {
+    for (const rel of [
+      'home/.git-credentials',
+      'home/.netrc',
+      'home/AppData/Local/Google/Chrome/User Data/Default/Login Data',
+      'home/AppData/Roaming/Mozilla/Firefox/Profiles/x/logins.json',
+      'home/Library/Keychains/login.keychain-db',
+      'home/.config/google-chrome/Default/Cookies',
+    ]) {
+      const p = await file(rel, 'secret');
+      await expect(loadAttachments([{ path: p }], opts()), rel).rejects.toThrow(/not allowed/);
+    }
+  });
+
   it('does not treat a lookalike folder as .ssh', async () => {
     const p = await file('home/.sshkeys/x.txt');
     expect(await loadAttachments([{ path: p }], opts())).toHaveLength(1);

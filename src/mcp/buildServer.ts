@@ -9,12 +9,13 @@ import { registerReadTools } from './tools/read.js';
 import type { Deps } from './tools/util.js';
 
 // A fresh server per call: the HTTP transport builds one per request. Deps are injectable for tests.
-export function buildMcpServer(deps: Partial<Deps> = {}): McpServer {
+// attachments: false hides local-file attachments (server mode, where paths would point at the server's disk).
+export function buildMcpServer(deps: Partial<Deps> & { attachments?: boolean } = {}): McpServer {
   const d: Deps = { getGmail: deps.getGmail ?? getGmail, loadConfig: deps.loadConfig ?? loadConfig };
   const server = new McpServer({ name: 'multiple-gmail', version: VERSION });
   registerAccountTools(server, d);
   registerReadTools(server, d);
-  registerComposeTools(server, d);
+  registerComposeTools(server, d, { attachments: deps.attachments ?? true });
   registerLabelTools(server, d);
   return server;
 }

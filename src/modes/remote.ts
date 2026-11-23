@@ -171,7 +171,7 @@ export async function createRemoteServer(opts: { env: Env; deps?: RemoteServerDe
   const mcpUrl = new URL(cfg.mcpUrl);
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(mcpUrl);
   const gate = requireBearerAuth({ verifier: oauth.verifier, expectedResource: mcpUrl, resourceMetadataUrl, requiredScopes: [SCOPE] });
-  const mcpHandler = createMcpHandler(() => buildMcpServer(), { onerror: (e) => logError(`multiple-gmail mcp error: ${e.message}`) });
+  const mcpHandler = createMcpHandler(() => buildMcpServer({ attachments: false }), { onerror: (e) => logError(`multiple-gmail mcp error: ${e.message}`) });
   const mcpNode = toNodeHandler(mcpHandler, { onerror: (e) => logError(`multiple-gmail mcp error: ${e.message}`) });
 
   const validateHost = hostHeaderValidation([new URL(cfg.publicUrl).hostname]);

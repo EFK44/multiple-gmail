@@ -10,8 +10,40 @@ export type LoadedAttachment = { filename: string; content: Buffer };
 // Gmail's limit for attachments on one message.
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
-// Folders under the home directory that hold credentials. The app's own data folder is always added.
-const SENSITIVE_HOME_DIRS = ['.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker', join('.config', 'gcloud')];
+// Files and folders under the home directory that hold credentials, keychains or browser profiles (saved passwords,
+// cookies). Listed for every OS: a path that does not exist on this one never matches. The app's data folder is added.
+const SENSITIVE_HOME_DIRS = [
+  '.ssh',
+  '.gnupg',
+  '.aws',
+  '.azure',
+  '.kube',
+  '.docker',
+  '.netrc',
+  '.git-credentials',
+  '.npmrc',
+  '.pypirc',
+  '.mozilla',
+  join('.config', 'gcloud'),
+  join('.config', 'gh'),
+  join('.config', 'google-chrome'),
+  join('.config', 'chromium'),
+  join('.config', 'BraveSoftware'),
+  join('.config', 'microsoft-edge'),
+  join('AppData', 'Local', 'Google', 'Chrome', 'User Data'),
+  join('AppData', 'Local', 'Microsoft', 'Edge', 'User Data'),
+  join('AppData', 'Local', 'BraveSoftware'),
+  join('AppData', 'Local', 'Microsoft', 'Credentials'),
+  join('AppData', 'Roaming', 'Microsoft', 'Credentials'),
+  join('AppData', 'Roaming', 'Microsoft', 'Protect'),
+  join('AppData', 'Roaming', 'Mozilla'),
+  join('Library', 'Keychains'),
+  join('Library', 'Cookies'),
+  join('Library', 'Application Support', 'Google', 'Chrome'),
+  join('Library', 'Application Support', 'Microsoft Edge'),
+  join('Library', 'Application Support', 'BraveSoftware'),
+  join('Library', 'Application Support', 'Firefox'),
+];
 
 type Opts = { home?: string; dataDir?: string; platform?: NodeJS.Platform };
 

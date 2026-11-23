@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
@@ -491,6 +491,91 @@ describe('compose tools', () => {
     const mime = rawOf(apis.alpha.users.messages.send);
     expect(/^To: .*sam@example.org/m.test(mime)).toBe(true);
     expect(/^Cc:/m.test(mime)).toBe(false);
+  });
+});
+
+async function mediaOf(fn: { mock: { calls: unknown[][] } }): Promise<{ mime: string; arg: any }> {
+  const arg = fn.mock.calls[0][0] as any;
+  expect(arg.media.mimeType).toBe('message/rfc822');
+  const chunks: Buffer[] = [];
+  for await (const c of arg.media.body as AsyncIterable<Buffer>) chunks.push(Buffer.from(c));
+  return { mime: Buffer.concat(chunks).toString('utf8'), arg };
+}
+
+describe('attachments', () => {
+  let file: string;
+  beforeEach(async () => {
+    await mkdir(join(root, 'files'), { recursive: true });
+    file = join(root, 'files', 'rapor.xlsx');
+    await writeFile(file, 'XLSX-BYTES');
+  });
+
+  it('create_draft uploads the message as media and lists attachments', async () => {
+    const { data } = await call('create_draft', {
+      account: 'alpha',
+      replyToMessageId: 'M1',
+      body: 'ekte',
+      attachments: [{ path: file }],
+    });
+    expect(data!.attachments).toEqual([{ filename: 'rapor.xlsx', size: 10 }]);
+    const { mime, arg } = await mediaOf(apis.alpha.users.drafts.create);
+    expect(arg.requestBody.message).toEqual({ threadId: 'T9' });
+    expect(mime).toContain('filename=rapor.xlsx');
+    expect(mime).toContain(Buffer.from('XLSX-BYTES').toString('base64'));
+  });
+
+  it('send_message and reply send with media', async () => {
+    await call('send_message', { account: 'beta', to: ['x@example.org'], body: 'b', attachments: [{ path: file }] });
+    expect((await mediaOf(apis.beta.users.messages.send)).mime).toContain('rapor.xlsx');
+    const { data } = await call('reply', {
+      account: 'alpha',
+      messageId: 'M1',
+      body: 'ok',
+      attachments: [{ path: file, filename: 'Şubat.xlsx' }],
+    });
+    expect(data!.attachments).toEqual([{ filename: 'Şubat.xlsx', size: 10 }]);
+    const { arg } = await mediaOf(apis.alpha.users.messages.send);
+    expect(arg.requestBody).toEqual({ threadId: 'T9' });
+  });
+
+  it('without attachments the raw path is unchanged', async () => {
+    const { data } = await call('send_message', { account: 'beta', to: ['x@example.org'], body: 'b' });
+    expect(data!.attachments).toBeUndefined();
+    const arg = apis.beta.users.messages.send.mock.calls[0][0] as any;
+    expect(arg.media).toBeUndefined();
+    expect(typeof arg.requestBody.raw).toBe('string');
+  });
+
+  it('send_message with draftId and attachments is rejected', async () => {
+    const { r, text } = await call('send_message', { account: 'alpha', draftId: 'd1', attachments: [{ path: file }] });
+    expect(r.isError).toBe(true);
+    expect(text).toMatch(/draftId sends the draft as is/);
+  });
+
+  it('a file in the app data folder is refused before calling Gmail', async () => {
+    await mkdir(join(root, 'home', 'tokens'), { recursive: true });
+    const secret = join(root, 'home', 'tokens', 'alpha.enc');
+    await writeFile(secret, 'secret');
+    const { r, text } = await call('create_draft', { account: 'alpha', body: 'x', attachments: [{ path: secret }] });
+    expect(r.isError).toBe(true);
+    expect(text).toMatch(/not allowed/);
+    expect(apis.alpha.users.drafts.create).not.toHaveBeenCalled();
+  });
+
+  it('server mode has no attachments field', async () => {
+    const server = buildMcpServer({ attachments: false, loadConfig: async () => cfg });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await server.connect(st);
+    const c = new Client({ name: 'test', version: '1.0.0' });
+    await c.connect(ct);
+    const { tools } = await c.listTools();
+    for (const name of ['create_draft', 'send_message', 'reply']) {
+      const t = tools.find((x) => x.name === name)!;
+      expect(Object.keys(t.inputSchema.properties ?? {})).not.toContain('attachments');
+    }
+    const local = (await client.listTools()).tools.find((x) => x.name === 'reply')!;
+    expect(Object.keys(local.inputSchema.properties ?? {})).toContain('attachments');
+    await c.close();
   });
 });
 
