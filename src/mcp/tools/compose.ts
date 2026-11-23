@@ -22,7 +22,7 @@ const htmlBody = z.string().optional().describe('Optional HTML body for rich for
 const attachmentsField = z
   .array(
     z.object({
-      path: z.string().min(1).describe('Absolute path of a file on this computer, for example C:\Users\me\Desktop\report.xlsx.'),
+      path: z.string().min(1).describe('Absolute path of a file on this computer, for example C:\\Users\\me\\Desktop\\report.xlsx.'),
       filename: z.string().min(1).optional().describe('Name shown to the recipient; defaults to the file name.'),
     }),
   )

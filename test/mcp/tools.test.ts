@@ -575,6 +575,7 @@ describe('attachments', () => {
     }
     const local = (await client.listTools()).tools.find((x) => x.name === 'reply')!;
     expect(Object.keys(local.inputSchema.properties ?? {})).toContain('attachments');
+    expect(JSON.stringify(local.inputSchema)).toContain('C:\\\\Users\\\\me\\\\Desktop\\\\report.xlsx');
     await c.close();
   });
 });

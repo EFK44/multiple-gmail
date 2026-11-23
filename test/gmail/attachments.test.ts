@@ -82,6 +82,35 @@ describe('loadAttachments', () => {
     }
   });
 
+  it('rejects a ..-named entry inside a denied folder', async () => {
+    const p = await file('home/.ssh/..backup/id_rsa', 'secret');
+    await expect(loadAttachments([{ path: p }], opts())).rejects.toThrow(/not allowed/);
+  });
+
+  it('rejects files under %APPDATA% and %LOCALAPPDATA% equivalents', async () => {
+    const roaming = join(root, 'roaming');
+    const local = join(root, 'local');
+    const o = { ...opts(), appData: roaming, localAppData: local };
+    for (const p of [
+      await file('roaming/gcloud/credentials.db', 's'),
+      await file('roaming/GitHub CLI/hosts.yml', 's'),
+      await file('roaming/Thunderbird/Profiles/x/logins.json', 's'),
+      await file('roaming/Opera Software/Opera Stable/Login Data', 's'),
+      await file('local/Vivaldi/User Data/Default/Login Data', 's'),
+      await file('local/Google/Chrome/User Data/Default/Cookies', 's'),
+      await file('home/.thunderbird/x/logins.json', 's'),
+    ]) {
+      await expect(loadAttachments([{ path: p }], o), p).rejects.toThrow(/not allowed/);
+    }
+  });
+
+  it('rejects UNC and device paths on Windows without touching the network', async () => {
+    const o = { ...opts(), platform: 'win32' as const };
+    for (const p of ['\\\\attacker.example\\share\\x.png', '//attacker.example/share/x.png', '\\\\.\\C:\\x.png']) {
+      await expect(loadAttachments([{ path: p }], o), p).rejects.toThrow(/network|drive letter/i);
+    }
+  });
+
   it('does not treat a lookalike folder as .ssh', async () => {
     const p = await file('home/.sshkeys/x.txt');
     expect(await loadAttachments([{ path: p }], opts())).toHaveLength(1);

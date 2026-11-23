@@ -54,7 +54,8 @@ The tools follow the same names and parameters as Claude's official Gmail connec
 - **Attachments read files on your computer.** `create_draft`, `send_message` and `reply` can attach any file your
   user account can read, given its full path (25 MB in total per message). multiple-gmail's own data folder and
   common credential locations (`.ssh`, `.gnupg`, `.aws`, `.git-credentials`, browser profiles with saved
-  passwords and cookies, the macOS Keychain folder, Windows Credentials) are blocked, but that list is not a sandbox. Server mode has no attachments.
+  passwords and cookies, the macOS Keychain folder, Windows Credentials) are blocked, but that list is not a sandbox. On Windows only drive letter paths are accepted, so network
+  (UNC) paths cannot make your PC connect to another machine. Server mode has no attachments.
 
 > [!WARNING]
 > **If you automate replies to incoming mail, protecting yourself is your job.** An email can carry hidden instructions
